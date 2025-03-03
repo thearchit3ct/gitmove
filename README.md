@@ -157,3 +157,5 @@ pytest
 ## Licence
 
 GitMove est distribué sous licence MIT. Voir le fichier LICENSE pour plus de détails.
+
+pip list | grep api-feature-coverage-analyzer
