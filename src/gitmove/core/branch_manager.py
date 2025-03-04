@@ -147,7 +147,7 @@ class BranchManager:
             excluded_branches = self.config.get_value("clean.exclude_branches", [])
         
         # Convertir en ensemble pour des recherches plus rapides
-        excluded_set = set(excluded_branches)
+        excluded_set = set(excluded_branches or [])
         
         # Ajouter la branche principale aux branches exclues
         excluded_set.add(self.main_branch)
