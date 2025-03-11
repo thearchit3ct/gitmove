@@ -6,9 +6,15 @@ import os
 import sys
 from pathlib import Path
 
+# Add import
+from gitmove.cicd import register_cicd_commands
 import click
 from rich.console import Console
 from rich.table import Table
+
+from rich.console import Console
+from gitmove.config import Config
+from gitmove.env_config import register_environment_commands
 
 from gitmove import __version__, get_manager
 from gitmove.config import Config
@@ -54,6 +60,14 @@ def cli():
     
     Un outil pour simplifier et automatiser la gestion des branches Git.
     """
+    register_cicd_commands(cli)
+    generate_ci_config(cli)
+    register_environment_commands(cli)
+    pass
+
+@cli.group()
+def config():
+    """Commandes de gestion de configuration."""
     pass
 
 @cli.command("clean")
@@ -163,6 +177,51 @@ def sync(strategy, branch, verbose, quiet, config):
             import traceback
             console.print(traceback.format_exc())
         sys.exit(1)
+
+@config.command('validate')
+@click.option('--config', '-c', type=click.Path(exists=True), help='Chemin du fichier de configuration')
+def validate_config(config):
+    """Valide le fichier de configuration."""
+    console = Console()
+    
+    try:
+        config_obj = Config()
+        if config:
+            config_obj.load_from_file(config)
+        
+        errors = config_obj.validate()
+        
+        if not errors:
+            console.print("[green]La configuration est valide.[/green]")
+            
+            # Afficher les recommandations
+            recommendations = config_obj.get_recommendations()
+            if recommendations:
+                console.print("\n[yellow]Recommandations:[/yellow]")
+                for key, recommendation in recommendations.items():
+                    console.print(f"- {recommendation}")
+        else:
+            console.print("[red]Erreurs de configuration :[/red]")
+            for error in errors:
+                console.print(f"  - {error}")
+            sys.exit(1)
+    
+    except Exception as e:
+        console.print(f"[red]Erreur lors de la validation : {e}[/red]")
+        sys.exit(1)
+
+@config.command('generate')
+@click.option('--output', '-o', type=click.Path(), help='Chemin de sortie pour la configuration')
+def generate_config(output):
+    """Génère un exemple de fichier de configuration."""
+    config_obj = Config()
+    sample_config = config_obj.generate_sample_config(output)
+    
+    console = Console()
+    if not output:
+        console.print(sample_config)
+    else:
+        console.print(f"[green]Configuration d'exemple générée dans {output}[/green]")
 
 @cli.command("advice")
 @click.option(
