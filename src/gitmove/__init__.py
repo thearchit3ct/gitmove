@@ -2,7 +2,7 @@
 GitMove - Gestionnaire de branches Git intelligent
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Thearchit3ct"
 __email__ = "thearchit3ct@outlook.com"
 

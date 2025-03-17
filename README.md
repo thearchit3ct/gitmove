@@ -6,7 +6,7 @@
 
 ## 🌟 Introduction
 
-GitMove est un gestionnaire de branches Git intelligent conçu pour simplifier et automatiser la gestion de vos workflows Git. Il offre des fonctionnalités avancées pour maintenir un environnement de développement propre et efficace.
+GitMove est un gestionnaire de branches Git intelligent conçu pour simplifier et automatiser la gestion de vos workflows Git. Il offre des fonctionnalités avancées pour maintenir un environnement de développement propre et efficace avec une interface utilisateur intuitive et riche.
 
 ## ✨ Fonctionnalités Principales
 
@@ -14,26 +14,37 @@ GitMove est un gestionnaire de branches Git intelligent conçu pour simplifier e
 - Identification et suppression des branches obsolètes
 - Personnalisation des critères de nettoyage
 - Support des branches locales et distantes
+- Visualisation claire des branches à nettoyer
 
 ### 2. Synchronisation Intelligente
 - Synchronisation automatique avec la branche principale
 - Stratégies de fusion et de rebase configurables
-- Détection intelligente du meilleur stratégie de synchronisation
+- Détection intelligente de la meilleure stratégie de synchronisation
+- Barres de progression interactives pour les opérations longues
 
 ### 3. Gestion des Conflits
 - Détection précoce des conflits potentiels
-- Suggestions de résolution de conflits
-- Analyse détaillée des modifications
+- Analyse détaillée avec visualisation des branches
+- Mode interactif pour explorer les conflits un par un
+- Suggestions de résolution adaptées au niveau de sévérité
 
 ### 4. Configuration Avancée
 - Support complet des variables d'environnement
-- Validation de configuration
+- Validation de configuration avec schéma extensible
 - Génération de modèles de configuration
+- Recommandations intelligentes pour l'optimisation
 
-### 5. Intégration CI/CD
+### 5. Interface Utilisateur Améliorée
+- Interface en ligne de commande riche et colorée
+- Visualisations des branches et de leurs relations
+- Messages d'erreur informatifs avec suggestions de résolution
+- Auto-complétion pour les shells (Bash, Zsh, Fish)
+
+### 6. Intégration CI/CD
 - Génération de workflows pour différentes plateformes
 - Validation des noms de branches
 - Détection automatique de l'environnement CI
+- Export des analyses pour intégration dans les pipelines
 
 ## 🚀 Installation
 
@@ -44,6 +55,18 @@ pip install gitmove
 ### Prérequis
 - Python 3.8+
 - Git 2.x
+
+### Installation de l'auto-complétion (optionnel)
+
+Pour activer l'auto-complétion des commandes dans votre shell :
+
+```bash
+# Générer et installer automatiquement le script d'auto-complétion
+gitmove completion --install
+
+# Ou pour un shell spécifique
+gitmove completion --shell zsh --install
+```
 
 ## 🔧 Configuration
 
@@ -98,6 +121,29 @@ gitmove sync
 gitmove sync --strategy rebase
 ```
 
+### Vérification des Conflits
+
+```bash
+# Vérifier les conflits potentiels
+gitmove check-conflicts
+
+# Mode interactif pour explorer les conflits
+gitmove check-conflicts --interactive
+
+# Exporter les résultats d'analyse
+gitmove check-conflicts --export rapport_conflits.json
+```
+
+### Obtenir des Conseils
+
+```bash
+# Obtenir un conseil de stratégie
+gitmove advice
+
+# Pour une branche spécifique
+gitmove advice --branch feature/nouvelle-fonctionnalite
+```
+
 ### Gestion de Configuration
 
 ```bash
@@ -118,13 +164,34 @@ gitmove cicd generate-workflow --platform github_actions
 gitmove cicd validate-branch feature/nouvelle-fonctionnalite
 ```
 
+### Auto-complétion
+
+```bash
+# Générer un script d'auto-complétion pour votre shell
+gitmove completion
+
+# Installer l'auto-complétion
+gitmove completion --install
+```
+
+## 🌈 Interface Utilisateur
+
+GitMove propose une interface en ligne de commande riche et interactive:
+
+- **Barres de progression** pour les opérations longues
+- **Visualisations des branches** sous forme d'arbres ASCII
+- **Tableaux colorés** pour une meilleure lisibilité
+- **Messages d'erreur informatifs** avec suggestions de résolution
+- **Mode interactif** pour l'exploration des conflits
+- **Auto-complétion** des commandes et options
+
 ## 🤝 Contribution
 
 ### Installation de Développement
 
 ```bash
 # Cloner le dépôt
-git clone https://github.com/votre-nom/gitmove.git
+git clone https://github.com/thearchit3ct/gitmove.git
 cd gitmove
 
 # Installer en mode développement

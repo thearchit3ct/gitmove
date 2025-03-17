@@ -46,7 +46,7 @@ except Exception as e:
     # Définir des valeurs par défaut si pyproject.toml ne peut pas être lu
     project_data = {
         "name": "gitmove",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "description": "Gestionnaire de branches Git intelligent",
         "dependencies": [
             "gitpython>=3.1.0",
