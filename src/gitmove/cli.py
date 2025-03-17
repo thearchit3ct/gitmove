@@ -7,14 +7,15 @@ import sys
 from pathlib import Path
 
 # Add import
-from gitmove.cicd import register_cicd_commands
+from gitmove.cicd import register_cicd_commands, generate_ci_config
+from gitmove.config_validator import register_config_commands
 import click
 from rich.console import Console
 from rich.table import Table
 
 from rich.console import Console
 from gitmove.config import Config
-from gitmove.env_config import register_environment_commands
+from gitmove.env_config import register_env_config_commands
 
 from gitmove import __version__, get_manager
 from gitmove.config import Config
@@ -60,11 +61,12 @@ def cli():
     
     Un outil pour simplifier et automatiser la gestion des branches Git.
     """
-    register_cicd_commands(cli)
-    generate_ci_config(cli)
-    register_environment_commands(cli)
     pass
 
+register_cicd_commands(cli)
+generate_ci_config(cli)
+register_env_config_commands(cli)
+register_config_commands(cli)
 @cli.group()
 def config():
     """Commandes de gestion de configuration."""

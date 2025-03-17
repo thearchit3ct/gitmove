@@ -82,7 +82,7 @@ class Config:
                 config.config_path = str(repo_config)
         
         # 3. Fusionner avec les variables d'environnement
-        env_config = EnvConfigLoader.load_from_env(config.config)
+        env_config = EnvConfigManager.load_env_config(config.config)
         config.config.update(env_config)
         
         # 4. Valider la configuration finale

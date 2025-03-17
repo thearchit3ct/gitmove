@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Votre Nom", email = "votre.email@example.com"}
+    {name = "Thearchit3ct", email = "votre.thearchit3ct@outlook.fr"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -32,10 +32,6 @@ dependencies = [
     "cryptography>=3.4.0",
 ]
 [project.optional-dependencies]
-cicd = [
-    "pyyaml>=5.1",
-]
-[project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "black>=23.0.0",
@@ -46,14 +42,17 @@ dev = [
     "toml>=0.10.0",
     "rich>=10.0.0"
 ]
+cicd = [
+    "pyyaml>=5.1",
+]
 
 [project.scripts]
 gitmove = "gitmove.cli:main"
 
 [project.urls]
-"Homepage" = "https://github.com/username/gitmove"
-"Bug Tracker" = "https://github.com/username/gitmove/issues"
-"Documentation" = "https://github.com/username/gitmove/wiki"
+"Homepage" = "https://github.com/thearchit3ct/gitmove"
+"Bug Tracker" = "https://github.com/thearchit3ct/gitmove/issues"
+"Documentation" = "https://github.com/thearchit3ct/gitmove/wiki"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
