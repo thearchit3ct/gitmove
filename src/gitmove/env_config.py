@@ -1,395 +1,483 @@
 """
-Advanced Environment Variable Configuration Support for GitMove
+Advanced CI/CD Integration Helpers for GitMove
 
-Provides comprehensive environment variable configuration management with:
-- Dynamic configuration loading
-- Type conversion
-- Nested configuration support
-- Validation and security features
+Provides comprehensive tools for managing CI/CD workflows across different platforms.
 """
 
 import os
 import re
 import json
-import typing
-import click
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Any
 
-class EnvConfigLoader:
+class CICDWorkflowGenerator:
     """
-    Advanced environment variable configuration loader for GitMove.
-    
-    Supports hierarchical configuration, type conversion, 
-    and nested environment variable parsing.
+    Advanced workflow generator supporting multiple CI/CD platforms.
     """
     
-    # Prefix for GitMove-specific environment variables
-    ENV_PREFIX = "GITMOVE_"
+    SUPPORTED_PLATFORMS = [
+        'github_actions', 
+        'gitlab_ci', 
+        'jenkins', 
+        'travis_ci', 
+        'circleci'
+    ]
     
-    @classmethod
-    def load_config(
-        cls, 
-        base_config: Optional[Dict] = None, 
-        prefix: Optional[str] = None
-    ) -> Dict:
+    def __init__(self, project_type: str = 'python', repo_path: Optional[str] = None):
         """
-        Load configuration from environment variables.
+        Initialize workflow generator.
         
         Args:
-            base_config: Base configuration to merge with environment variables
-            prefix: Custom prefix for environment variables
-        
-        Returns:
-            Merged configuration dictionary
+            project_type: Type of project (python, js, etc.)
+            repo_path: Path to the Git repository
         """
-        # Use default prefix if not specified
-        prefix = prefix or cls.ENV_PREFIX
-        
-        # Start with base configuration or empty dict
-        config = base_config or {}
-        
-        # Collect all relevant environment variables
-        env_vars = {
-            key: value for key, value in os.environ.items() 
-            if key.startswith(prefix)
+        self.project_type = project_type
+        self.repo_path = repo_path or os.getcwd()
+        self._detect_project_details()
+    
+    def _detect_project_details(self):
+        """
+        Detect project-specific details for more accurate workflow generation.
+        """
+        self.project_details = {
+            'python_version': self._detect_python_version(),
+            'dependencies': self._detect_dependencies(),
+            'test_command': self._detect_test_command(),
+            'linters': self._detect_linters()
         }
-        
-        # Process each environment variable
-        for full_key, value in env_vars.items():
-            # Remove prefix
-            config_key = full_key[len(prefix):].lower()
-            
-            # Convert the value and merge into configuration
-            config = cls._merge_config_value(config, config_key, value)
-        
-        return config
     
-    @classmethod
-    def _merge_config_value(cls, config: Dict, key: str, value: str) -> Dict:
+    def _detect_python_version(self) -> str:
         """
-        Merge a configuration value into the existing configuration.
-        
-        Args:
-            config: Existing configuration dictionary
-            key: Configuration key (potentially nested)
-            value: Configuration value
+        Detect Python version from pyproject.toml or runtime.txt.
         
         Returns:
-            Updated configuration dictionary
+            Detected Python version
         """
-        # Split nested keys
-        parts = key.lower().split('_')
-        
-        # Traverse or create nested structure
-        current = config
-        for part in parts[:-1]:
-            current = current.setdefault(part, {})
-        
-        # Convert and set the final value
-        converted_value = cls._convert_value(value)
-        current[parts[-1]] = converted_value
-        
-        return config
-    
-    @classmethod
-    def _convert_value(cls, value: str) -> Any:
-        """
-        Convert environment variable string to appropriate type.
-        
-        Args:
-            value: Environment variable value
-        
-        Returns:
-            Converted value
-        """
-        # Trim whitespace
-        value = value.strip()
-        
-        # Try JSON parsing first (for complex types)
+        # Check pyproject.toml
         try:
-            return json.loads(value)
-        except (json.JSONDecodeError, TypeError):
+            import toml
+            with open(os.path.join(self.repo_path, 'pyproject.toml'), 'r') as f:
+                config = toml.load(f)
+                requires_python = config.get('project', {}).get('requires-python', '')
+                if requires_python:
+                    # Extract version
+                    match = re.search(r'(\d+\.\d+)', requires_python)
+                    return match.group(1) if match else '3.8'
+        except (ImportError, FileNotFoundError):
             pass
         
-        # Boolean conversions
-        lower_value = value.lower()
-        if lower_value in ['true', '1', 'yes', 'on']:
-            return True
-        if lower_value in ['false', '0', 'no', 'off']:
-            return False
-        
-        # Numeric conversions
+        # Check runtime.txt (Heroku style)
         try:
-            # Try integer first
-            return int(value)
-        except ValueError:
+            with open(os.path.join(self.repo_path, 'runtime.txt'), 'r') as f:
+                content = f.read()
+                match = re.search(r'python-(\d+\.\d+)', content)
+                return match.group(1) if match else '3.8'
+        except FileNotFoundError:
+            pass
+        
+        return '3.8'  # Default
+    
+    def _detect_dependencies(self) -> List[str]:
+        """
+        Detect project dependencies.
+        
+        Returns:
+            List of core dependencies
+        """
+        dependencies = []
+        
+        # Check pyproject.toml
+        try:
+            import toml
+            with open(os.path.join(self.repo_path, 'pyproject.toml'), 'r') as f:
+                config = toml.load(f)
+                dependencies = config.get('project', {}).get('dependencies', [])
+        except (ImportError, FileNotFoundError):
+            pass
+        
+        # Fallback to requirements.txt
+        if not dependencies:
             try:
-                # Then try float
-                return float(value)
-            except ValueError:
+                with open(os.path.join(self.repo_path, 'requirements.txt'), 'r') as f:
+                    dependencies = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            except FileNotFoundError:
                 pass
         
-        # Return as string if no conversion
-        return value
+        return dependencies
     
-    @classmethod
-    def generate_env_template(
-        cls, 
-        config_schema: Optional[Dict] = None, 
-        include_descriptions: bool = True
-    ) -> str:
+    def _detect_test_command(self) -> str:
         """
-        Generate a template of environment variables based on a configuration schema.
-        
-        Args:
-            config_schema: Configuration schema to generate template from
-            include_descriptions: Include descriptions for each variable
+        Detect appropriate test command.
         
         Returns:
-            String containing environment variable template
+            Test command
         """
-        # Default schema if not provided
-        if config_schema is None:
-            config_schema = {
-                'general': {
-                    'main_branch': {
-                        'type': 'string',
-                        'description': 'Default main branch name',
-                        'example': 'main'
-                    },
-                    'verbose': {
-                        'type': 'boolean',
-                        'description': 'Enable verbose logging',
-                        'example': 'false'
-                    }
-                },
-                'sync': {
-                    'default_strategy': {
-                        'type': 'string',
-                        'description': 'Default sync strategy',
-                        'example': 'rebase'
-                    },
-                    'auto_sync': {
-                        'type': 'boolean',
-                        'description': 'Enable automatic synchronization',
-                        'example': 'true'
-                    }
-                }
-            }
+        # Check for specific test frameworks
+        if os.path.exists(os.path.join(self.repo_path, 'pytest.ini')):
+            return 'pytest'
+        elif os.path.exists(os.path.join(self.repo_path, 'unittest')):
+            return 'python -m unittest discover'
+        elif os.path.exists(os.path.join(self.repo_path, 'tox.ini')):
+            return 'tox'
         
-        # Generate environment variable template
-        env_template = ["# GitMove Configuration Environment Variables", ""]
-        
-        def _process_config_section(section_name: str, section_config: Dict):
-            """Process a configuration section."""
-            for key, details in section_config.items():
-                # Construct full environment variable name
-                env_var = f"{cls.ENV_PREFIX}{section_name.upper()}_{key.upper()}"
-                
-                # Add description if requested
-                if include_descriptions and isinstance(details, dict):
-                    if details.get('description'):
-                        env_template.append(f"# {details['description']}")
-                    
-                    # Add example if available
-                    if details.get('example'):
-                        env_template.append(f"# Example: {details['example']}")
-                
-                # Add environment variable placeholder
-                env_template.append(f"{env_var}=")
-                env_template.append("")
-        
-        # Process each section in the schema
-        for section_name, section_config in config_schema.items():
-            env_template.append(f"# {section_name.capitalize()} Configuration")
-            _process_config_section(section_name, section_config)
-        
-        return "\n".join(env_template)
+        return 'python -m unittest'
     
-    @classmethod
-    def validate_env_config(
-        cls, 
-        config: Dict, 
-        schema: Optional[Dict] = None
-    ) -> Dict[str, List[str]]:
+    def _detect_linters(self) -> List[str]:
         """
-        Validate environment-loaded configuration against a schema.
-        
-        Args:
-            config: Configuration dictionary to validate
-            schema: Validation schema
+        Detect linters and code quality tools.
         
         Returns:
-            Dictionary of validation errors
+            List of linters
         """
-        # Default validation schema
-        if schema is None:
-            schema = {
-                'general': {
-                    'main_branch': {
-                        'type': str,
-                        'pattern': r'^[a-zA-Z0-9_\-./]+$'
-                    },
-                    'verbose': {
-                        'type': bool
-                    }
-                },
-                'sync': {
-                    'default_strategy': {
-                        'type': str,
-                        'allowed': ['merge', 'rebase', 'auto']
-                    },
-                    'auto_sync': {
-                        'type': bool
-                    }
-                }
-            }
+        linters = []
         
-        errors = {}
+        # Check for common linting tools
+        if os.path.exists(os.path.join(self.repo_path, '.flake8')):
+            linters.append('flake8')
+        if os.path.exists(os.path.join(self.repo_path, 'pyproject.toml')) and 'black' in self._detect_dependencies():
+            linters.append('black')
+        if os.path.exists(os.path.join(self.repo_path, '.mypy.ini')):
+            linters.append('mypy')
         
-        def _validate_section(section_name: str, section_config: Dict, section_schema: Dict):
-            """Validate a specific configuration section."""
-            section_errors = []
-            
-            for key, rules in section_schema.items():
-                value = section_config.get(key)
-                
-                # Skip if value not present
-                if value is None:
-                    continue
-                
-                # Type checking
-                if 'type' in rules and not isinstance(value, rules['type']):
-                    section_errors.append(
-                        f"Invalid type for {section_name}.{key}. "
-                        f"Expected {rules['type'].__name__}, got {type(value).__name__}"
-                    )
-                
-                # Pattern validation for strings
-                if (rules.get('type') == str and 
-                    'pattern' in rules and 
-                    not re.match(rules['pattern'], str(value))):
-                    section_errors.append(
-                        f"Invalid format for {section_name}.{key}. "
-                        f"Must match pattern: {rules['pattern']}"
-                    )
-                
-                # Allowed values
-                if 'allowed' in rules and value not in rules['allowed']:
-                    section_errors.append(
-                        f"Invalid value for {section_name}.{key}. "
-                        f"Allowed values: {rules['allowed']}"
-                    )
-            
-            return section_errors
-        
-        # Validate each section
-        for section_name, section_schema in schema.items():
-            section_config = config.get(section_name, {})
-            section_errors = _validate_section(section_name, section_config, section_schema)
-            
-            if section_errors:
-                errors[section_name] = section_errors
-        
-        return errors
-
-def register_env_config_commands(cli):
-    """
-    Register environment configuration-related commands to GitMove CLI.
+        return linters
     
-    Args:
-        cli: Click CLI object
-    """
-    @cli.group()
-    def env():
-        """Environment configuration management commands."""
-        pass
-    
-    @env.command('generate-template')
-    @click.option('--output', '-o', type=click.Path(), help='Output path for environment variable template')
-    def generate_template(output):
-        """Generate an environment variable configuration template."""
-        template = EnvConfigLoader.generate_env_template()
+    def generate_workflow(self, platform: str = 'github_actions') -> Dict:
+        """
+        Generate workflow configuration for specified platform.
         
-        if output:
-            with open(output, 'w') as f:
-                f.write(template)
-            click.echo(f"Environment variable template saved to {output}")
-        else:
-            click.echo(template)
-    
-    @env.command('validate')
-    @click.option('--prefix', default='GITMOVE_', help='Environment variable prefix')
-    def validate_env_config(prefix):
-        """Validate current environment configuration."""
-        # Load configuration from environment
-        config = EnvConfigLoader.load_config(prefix=prefix)
+        Args:
+            platform: Target CI/CD platform
         
-        # Validate the configuration
-        errors = EnvConfigLoader.validate_env_config(config)
+        Returns:
+            Workflow configuration dictionary
+        """
+        if platform not in self.SUPPORTED_PLATFORMS:
+            raise ValueError(f"Unsupported platform: {platform}")
         
-        if not errors:
-            click.echo("Environment configuration is valid.")
-        else:
-            click.echo("Environment configuration validation failed:")
-            for section, section_errors in errors.items():
-                click.echo(f"\n{section.capitalize()} Errors:")
-                for error in section_errors:
-                    click.echo(f"  - {error}")
-                sys.exit(1)
-    
-    @env.command('list')
-    def list_env_vars():
-        """List all GitMove-related environment variables."""
-        gitmove_vars = {
-            key: value for key, value in os.environ.items() 
-            if key.startswith(EnvConfigLoader.ENV_PREFIX)
+        # Platform-specific workflow generation
+        workflow_generators = {
+            'github_actions': self._generate_github_actions_workflow,
+            'gitlab_ci': self._generate_gitlab_ci_workflow,
+            'jenkins': self._generate_jenkins_workflow,
+            'travis_ci': self._generate_travis_ci_workflow,
+            'circleci': self._generate_circleci_workflow
         }
         
-        if not gitmove_vars:
-            click.echo("No GitMove-related environment variables found.")
-        else:
-            click.echo("GitMove Environment Variables:")
-            for key, value in sorted(gitmove_vars.items()):
-                click.echo(f"{key}: {value}")
-
-# Optional configuration loader
-def load_env_config(
-    base_config: Optional[Dict] = None, 
-    prefix: Optional[str] = None
-) -> Dict:
-    """
-    Load and merge environment configuration.
+        return workflow_generators[platform]()
     
-    Args:
-        base_config: Base configuration to merge with
-        prefix: Custom environment variable prefix
+    def _generate_github_actions_workflow(self) -> Dict:
+        """
+        Generate GitHub Actions workflow.
+        
+        Returns:
+            GitHub Actions workflow configuration
+        """
+        return {
+            'name': 'GitMove Workflow',
+            'on': {
+                'push': {'branches': ['main', 'develop']},
+                'pull_request': {'branches': ['main', 'develop']}
+            },
+            'jobs': {
+                'build-and-test': {
+                    'runs-on': 'ubuntu-latest',
+                    'strategy': {
+                        'matrix': {
+                            'python-version': [
+                                self.project_details['python_version'],
+                                f"{float(self.project_details['python_version']) + 0.1}"
+                            ]
+                        }
+                    },
+                    'steps': [
+                        {'uses': 'actions/checkout@v3'},
+                        {
+                            'name': 'Set up Python ${{ matrix.python-version }}',
+                            'uses': 'actions/setup-python@v3',
+                            'with': {'python-version': '${{ matrix.python-version }}'}
+                        },
+                        {
+                            'name': 'Install dependencies',
+                            'run': '\n'.join([
+                                'python -m pip install --upgrade pip',
+                                'pip install -e ".[dev]"'
+                            ])
+                        },
+                        {
+                            'name': 'Run linters',
+                            'run': ' && '.join([
+                                f'{linter} .' for linter in self.project_details['linters']
+                            ]) if self.project_details['linters'] else 'echo "No linters configured"'
+                        },
+                        {
+                            'name': 'Run tests',
+                            'run': self.project_details['test_command']
+                        },
+                        {
+                            'name': 'GitMove Branch Validation',
+                            'run': 'gitmove check-conflicts'
+                        }
+                    ]
+                }
+            }
+        }
+    
+    def _generate_gitlab_ci_workflow(self) -> Dict:
+        """
+        Generate GitLab CI workflow.
+        
+        Returns:
+            GitLab CI workflow configuration
+        """
+        return {
+            'image': f'python:{self.project_details["python_version"]}',
+            'stages': ['test', 'lint', 'validate'],
+            'test': {
+                'script': [
+                    'pip install -e ".[dev]"',
+                    self.project_details['test_command']
+                ]
+            },
+            'lint': {
+                'script': [
+                    ' && '.join([
+                        f'{linter} .' for linter in self.project_details['linters']
+                    ]) if self.project_details['linters'] else 'echo "No linters configured"'
+                ]
+            },
+            'validate': {
+                'script': ['gitmove check-conflicts']
+            }
+        }
+    
+    def _generate_jenkins_workflow(self) -> Dict:
+        """
+        Generate Jenkins pipeline configuration.
+        
+        Returns:
+            Jenkins pipeline configuration
+        """
+        return {
+            'pipeline': {
+                'agent': 'any',
+                'stages': [
+                    {
+                        'stage': 'Build',
+                        'steps': [
+                            f'use Python {self.project_details["python_version"]}',
+                            'pip install -e ".[dev]"'
+                        ]
+                    },
+                    {
+                        'stage': 'Lint',
+                        'steps': [
+                            ' && '.join([
+                                f'{linter} .' for linter in self.project_details['linters']
+                            ]) if self.project_details['linters'] else 'echo "No linters configured"'
+                        ]
+                    },
+                    {
+                        'stage': 'Test',
+                        'steps': [self.project_details['test_command']]
+                    },
+                    {
+                        'stage': 'Validate',
+                        'steps': ['gitmove check-conflicts']
+                    }
+                ]
+            }
+        }
+    
+    def _generate_travis_ci_workflow(self) -> Dict:
+        """
+        Generate Travis CI configuration.
+        
+        Returns:
+            Travis CI configuration
+        """
+        return {
+            'language': 'python',
+            'python': [
+                self.project_details['python_version'],
+                f"{float(self.project_details['python_version']) + 0.1}"
+            ],
+            'install': [
+                'pip install -e ".[dev]"'
+            ],
+            'script': [
+                *([' && '.join([f'{linter} .' for linter in self.project_details['linters']])
+                   ] if self.project_details['linters'] else []),
+                self.project_details['test_command'],
+                'gitmove check-conflicts'
+            ]
+        }
+    
+    def _generate_circleci_workflow(self) -> Dict:
+        """
+        Generate CircleCI configuration.
+        
+        Returns:
+            CircleCI configuration
+        """
+        return {
+            'version': 2.1,
+            'jobs': {
+                'build-and-test': {
+                    'docker': [
+                        {'image': f'cimg/python:{self.project_details["python_version"]}'}
+                    ],
+                    'steps': [
+                        'checkout',
+                        {
+                            'run': {
+                                'name': 'Install dependencies',
+                                'command': 'pip install -e ".[dev]"'
+                            }
+                        },
+                        *([{
+                            'run': {
+                                'name': 'Run linters',
+                                'command': ' && '.join([f'{linter} .' for linter in self.project_details['linters']])
+                            }
+                        }] if self.project_details['linters'] else []),
+                        {
+                            'run': {
+                                'name': 'Run tests',
+                                'command': self.project_details['test_command']
+                            }
+                        },
+                        {
+                            'run': {
+                                'name': 'GitMove Branch Validation',
+                                'command': 'gitmove check-conflicts'
+                            }
+                        }
+                    ]
+                }
+            },
+            'workflows': {
+                'version': 2,
+                'build-test': {
+                    'jobs': ['build-and-test']
+                }
+            }
+        }
+
+class BranchValidator:
+    """
+    Advanced branch validation and naming convention checker.
+    """
+    
+    DEFAULT_PATTERNS = {
+        'feature': r'^feature/([\w-]+)$',
+        'bugfix': r'^(bugfix|fix)/([\w-]+)$',
+        'hotfix': r'^hotfix/([\w-]+)$',
+        'release': r'^release/([\w-]+)$',
+        'docs': r'^docs/([\w-]+)$',
+        'chore': r'^chore/([\w-]+)$',
+        'test': r'^test/([\w-]+)$'
+    }
+    
+    @classmethod
+    def validate_branch_name(
+        cls, 
+        branch_name: str, 
+        patterns: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Validate branch name against naming conventions.
+        
+        Args:
+            branch_name: Name of the branch to validate
+            patterns: Custom branch naming patterns
+        
+        Returns:
+            Validation result dictionary
+        """
+        patterns = patterns or cls.DEFAULT_PATTERNS
+        
+        # Special cases for main branches
+        if branch_name in ['main', 'master', 'develop']:
+            return {
+                'is_valid': True,
+                'type': 'main',
+                'details': 'Standard main branch'
+            }
+        
+        # Check against patterns
+        for branch_type, pattern in patterns.items():
+            match = re.match(pattern, branch_name)
+            if match:
+                return {
+                    'is_valid': True,
+                    'type': branch_type,
+                    'details': match.group(1) if match.groups() else branch_name
+                }
+        
+        return {
+            'is_valid': False,
+            'type': 'invalid',
+            'details': 'Does not match any known branch naming convention'
+        }
+
+# Utility functions
+def detect_ci_environment() -> Optional[Dict]:
+    """
+    Detect the current CI/CD environment.
     
     Returns:
-        Merged configuration dictionary
+        Dictionary with CI environment details or None
     """
-    config = base_config or {}
+    ci_env_vars = {
+        'github_actions': 'GITHUB_ACTIONS',
+        'gitlab_ci': 'GITLAB_CI',
+        'travis_ci': 'TRAVIS',
+        'circleci': 'CIRCLECI',
+        'jenkins': 'JENKINS_HOME',
+        'azure_pipelines': 'SYSTEM_TEAMFOUNDATIONCOLLECTIONURI',
+        'bitbucket_pipelines': 'BITBUCKET_COMMIT'
+    }
     
-    try:
-        # Load and merge environment variables
-        env_config = EnvConfigLoader.load_config(
-            base_config=config, 
-            prefix=prefix
-        )
-        
-        # Validate the loaded configuration
-        validation_errors = EnvConfigLoader.validate_env_config(env_config)
-        
-        if validation_errors:
-            # Log or handle validation errors
-            print("Environment configuration validation warnings:")
-            for section, errors in validation_errors.items():
-                print(f"{section.capitalize()} Errors:")
-                for error in errors:
-                    print(f"  - {error}")
-        
-        return env_config
+    detected_ci = {}
+    for name, var in ci_env_vars.items():
+        if os.environ.get(var):
+            detected_ci[name] = {
+                'environment': name,
+                'branch': os.environ.get('BRANCH_NAME', 'unknown'),
+                'commit': os.environ.get('COMMIT', 'unknown')
+            }
     
-    except Exception as e:
-        print(f"Error loading environment configuration: {e}")
-        return config
+    return detected_ci or None
+
+# Optional configuration for handling CI/CD specific workflows
+class CICDWorkflowHandler:
+    """
+    Advanced handler for CI/CD specific workflow operations.
+    """
+    
+    def __init__(self, repo_path: Optional[str] = None):
+        """
+        Initialize CICD Workflow Handler.
+        
+        Args:
+            repo_path: Path to the Git repository
+        """
+        self.repo_path = repo_path or os.getcwd()
+        self.ci_env = detect_ci_environment()
+    
+    def run_ci_specific_checks(self):
+        """
+        Run CI/CD specific checks and validations.
+        
+        Returns:
+            Dictionary of check results
+        """
+        results = {}
+        
+        # Branch validation
+        current_branch = os.environ.get('BRANCH_NAME', 'unknown')
+        branch_validation = BranchValidator.validate_branch_name(current_branch)
+        results['branch_validation'] = branch_validation
+        
+        # Additional checks can be added here
+        
+        return results
