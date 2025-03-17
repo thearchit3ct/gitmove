@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import toml
 
-from gitmove.config_validator import ConfigValidator
+from gitmove.validators.config_validator import ConfigValidator
 from gitmove.env_config import EnvConfigLoader
 
 # Configuration par défaut
@@ -52,9 +52,16 @@ class Config:
     
     def __init__(self):
         """Initialise une nouvelle configuration avec les valeurs par défaut."""
-        self.config = DEFAULT_CONFIG.copy()
-        self.config_path = None
         self.validator = ConfigValidator()
+        # Créer les valeurs par défaut à partir du schéma de validation
+        schema = self.validator.get_schema_section()
+        self.config = {}
+        for section, section_schema in schema.items():
+            self.config[section] = {}
+            for key, rules in section_schema.items():
+                self.config[section][key] = rules.get('default')
+        
+        self.config_path = None
     
     @classmethod
     def load(cls, repo_path: Optional[str] = None) -> 'Config':
@@ -249,32 +256,43 @@ class Config:
         Returns:
             Liste des problèmes trouvés. Liste vide si tout est valide.
         """
-        # issues = []
-        
-        # # Vérifier les valeurs obligatoires
-        # if not self.get_value("general.main_branch"):
-        #     issues.append("La branche principale n'est pas définie (general.main_branch)")
-        
-        # # Vérifier les types
-        # if not isinstance(self.get_value("clean.age_threshold"), int):
-        #     issues.append("Le seuil d'âge doit être un nombre entier (clean.age_threshold)")
-        
-        # if not isinstance(self.get_value("advice.rebase_threshold"), int):
-        #     issues.append("Le seuil de rebase doit être un nombre entier (advice.rebase_threshold)")
-        
-        # # Vérifier les valeurs acceptables
-        # if self.get_value("sync.default_strategy") not in ["merge", "rebase", "auto"]:
-        #     issues.append(
-        #         "La stratégie de synchronisation par défaut doit être 'merge', 'rebase' ou 'auto' "
-        #         "(sync.default_strategy)"
-        #     )
-        
-        # return issues
         try:
+            # Utiliser le validateur consolidé
             self.validator.validate_config(self.config)
             return []
         except ValueError as e:
-            return [str(e)]
+            # Capturer les messages d'erreur
+            error_message = str(e)
+            
+            # Extraire les erreurs individuelles
+            if "Invalid configuration detected" in error_message:
+                # Analyser le texte pour trouver les erreurs individuelles
+                # Comme nous n'avons pas accès direct aux erreurs internes du validateur,
+                # nous devons réexécuter la validation en mode silencieux pour les collecter
+                errors = []
+                try:
+                    # Désactiver temporairement la console
+                    original_console = self.validator.console
+                    self.validator.console = None
+                    
+                    try:
+                        self.validator.validate_config(self.config)
+                    except Exception:
+                        pass
+                    
+                    # Restaurer la console
+                    self.validator.console = original_console
+                except Exception:
+                    # En cas d'échec, renvoyer le message d'erreur original
+                    return [error_message]
+                
+                # Si nous n'avons pas pu récupérer les erreurs individuelles, renvoyer le message d'erreur original
+                if not errors:
+                    return [error_message]
+                
+                return errors
+            else:
+                return [error_message]
         
     def get_recommendations(self) -> Dict:
         """
@@ -285,11 +303,9 @@ class Config:
         """
         return self.validator.recommend_configuration(self.config)
     
-    # Les autres méthodes de la classe restent similaires à l'implémentation précédente
-    
     def generate_sample_config(self, output_path: Optional[str] = None) -> str:
         """
-        Génère un exemple de configuration.
+        Génère un exemple de configuration avec des descriptions détaillées.
         
         Args:
             output_path: Chemin de sortie pour le fichier de configuration
@@ -298,3 +314,41 @@ class Config:
             Contenu de la configuration d'exemple
         """
         return self.validator.generate_sample_config(output_path)
+    
+    def diff_with(self, other_config: 'Config') -> Dict:
+        """
+        Compare cette configuration avec une autre et retourne les différences.
+        
+        Args:
+            other_config: Autre configuration à comparer
+            
+        Returns:
+            Dictionnaire des différences
+        """
+        return self.validator.diff_configs(self.config, other_config.config)
+        
+    def merge_with(self, other_config: 'Config', overwrite: bool = True) -> 'Config':
+        """
+        Fusionne cette configuration avec une autre.
+        
+        Args:
+            other_config: Autre configuration à fusionner
+            overwrite: Si True, la configuration fournie écrase les valeurs existantes
+            
+        Returns:
+            Nouvelle instance Config avec les configurations fusionnées
+        """
+        if overwrite:
+            base = self.config
+            override = other_config.config
+        else:
+            base = other_config.config
+            override = self.config
+            
+        merged_dict = self.validator.merge_configs(base, override)
+        
+        # Créer une nouvelle instance avec la configuration fusionnée
+        merged_config = Config()
+        merged_config.config = merged_dict
+        
+        return merged_config

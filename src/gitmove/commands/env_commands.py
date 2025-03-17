@@ -9,7 +9,7 @@ import os
 import sys
 import click
 
-from gitmove.env_config import EnvConfigLoader
+from gitmove.commands.env_config import EnvConfigLoader
 
 def register_env_config_commands(cli):
     """
