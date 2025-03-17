@@ -3,14 +3,17 @@ GitMove - Gestionnaire de branches Git intelligent
 """
 
 __version__ = "0.1.0"
-__author__ = "Your Name"
-__email__ = "your.email@example.com"
+__author__ = "Thearchit3ct"
+__email__ = "thearchit3ct@outlook.com"
 
 from gitmove.core.branch_manager import BranchManager
 from gitmove.core.conflict_detector import ConflictDetector
 from gitmove.core.sync_manager import SyncManager
 from gitmove.core.strategy_advisor import StrategyAdvisor
 from gitmove.config import Config
+from gitmove.plugins import PluginManager, hook
+from gitmove.config_validator import ConfigValidator
+from gitmove.env_config import EnvConfigLoader
 
 __all__ = [
     "BranchManager",
@@ -18,6 +21,10 @@ __all__ = [
     "SyncManager",
     "StrategyAdvisor",
     "Config",
+    "PluginManager",
+    "hook",
+    "EnvConfigLoader",
+    "ConfigValidator",
 ]
 
 # Point d'entrée pour les utilisateurs de l'API

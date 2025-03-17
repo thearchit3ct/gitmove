@@ -9,6 +9,9 @@ from typing import Any, Dict, List, Optional, Union
 
 import toml
 
+from gitmove.config_validator import ConfigValidator
+from gitmove.env_config import EnvConfigLoader
+
 # Configuration par défaut
 DEFAULT_CONFIG = {
     "general": {
@@ -51,6 +54,7 @@ class Config:
         """Initialise une nouvelle configuration avec les valeurs par défaut."""
         self.config = DEFAULT_CONFIG.copy()
         self.config_path = None
+        self.validator = ConfigValidator()
     
     @classmethod
     def load(cls, repo_path: Optional[str] = None) -> 'Config':
@@ -76,6 +80,16 @@ class Config:
             if repo_config.exists():
                 config.load_from_file(repo_config)
                 config.config_path = str(repo_config)
+        
+        # 3. Fusionner avec les variables d'environnement
+        env_config = EnvConfigManager.load_env_config(config.config)
+        config.config.update(env_config)
+        
+        # 4. Valider la configuration finale
+        try:
+            config.config = config.validator.validate_config(config.config)
+        except ValueError as e:
+            print(f"Erreur de configuration : {e}")
         
         return config
     
@@ -235,24 +249,52 @@ class Config:
         Returns:
             Liste des problèmes trouvés. Liste vide si tout est valide.
         """
-        issues = []
+        # issues = []
         
-        # Vérifier les valeurs obligatoires
-        if not self.get_value("general.main_branch"):
-            issues.append("La branche principale n'est pas définie (general.main_branch)")
+        # # Vérifier les valeurs obligatoires
+        # if not self.get_value("general.main_branch"):
+        #     issues.append("La branche principale n'est pas définie (general.main_branch)")
         
-        # Vérifier les types
-        if not isinstance(self.get_value("clean.age_threshold"), int):
-            issues.append("Le seuil d'âge doit être un nombre entier (clean.age_threshold)")
+        # # Vérifier les types
+        # if not isinstance(self.get_value("clean.age_threshold"), int):
+        #     issues.append("Le seuil d'âge doit être un nombre entier (clean.age_threshold)")
         
-        if not isinstance(self.get_value("advice.rebase_threshold"), int):
-            issues.append("Le seuil de rebase doit être un nombre entier (advice.rebase_threshold)")
+        # if not isinstance(self.get_value("advice.rebase_threshold"), int):
+        #     issues.append("Le seuil de rebase doit être un nombre entier (advice.rebase_threshold)")
         
-        # Vérifier les valeurs acceptables
-        if self.get_value("sync.default_strategy") not in ["merge", "rebase", "auto"]:
-            issues.append(
-                "La stratégie de synchronisation par défaut doit être 'merge', 'rebase' ou 'auto' "
-                "(sync.default_strategy)"
-            )
+        # # Vérifier les valeurs acceptables
+        # if self.get_value("sync.default_strategy") not in ["merge", "rebase", "auto"]:
+        #     issues.append(
+        #         "La stratégie de synchronisation par défaut doit être 'merge', 'rebase' ou 'auto' "
+        #         "(sync.default_strategy)"
+        #     )
         
-        return issues
+        # return issues
+        try:
+            self.validator.validate_config(self.config)
+            return []
+        except ValueError as e:
+            return [str(e)]
+        
+    def get_recommendations(self) -> Dict:
+        """
+        Obtient des recommandations pour la configuration.
+        
+        Returns:
+            Dictionnaire de recommandations
+        """
+        return self.validator.recommend_configuration(self.config)
+    
+    # Les autres méthodes de la classe restent similaires à l'implémentation précédente
+    
+    def generate_sample_config(self, output_path: Optional[str] = None) -> str:
+        """
+        Génère un exemple de configuration.
+        
+        Args:
+            output_path: Chemin de sortie pour le fichier de configuration
+        
+        Returns:
+            Contenu de la configuration d'exemple
+        """
+        return self.validator.generate_sample_config(output_path)
