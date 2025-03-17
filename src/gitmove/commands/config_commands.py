@@ -10,7 +10,7 @@ import sys
 import click
 from rich.console import Console
 
-from gitmove.config_validator import ConfigValidator
+from gitmove.validators.config_validator import ConfigValidator
 
 def register_config_commands(cli):
     """
