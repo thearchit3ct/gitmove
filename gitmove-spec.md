@@ -210,19 +210,19 @@ name = "gitmove"
 version = "0.1.0"
 description = "Gestionnaire de branches Git intelligent"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Votre Nom", email = "votre.email@example.com"}
+    {name = "thearchit3ct", email = "thearchit3ct@outlook.fr"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Topic :: Software Development :: Version Control :: Git",
 ]
 dependencies = [
@@ -236,15 +236,16 @@ dependencies = [
 gitmove = "gitmove.cli:main"
 
 [project.urls]
-"Homepage" = "https://github.com/username/gitmove"
-"Bug Tracker" = "https://github.com/username/gitmove/issues"
+"Homepage" = "https://github.com/thearchit3ct/gitmove"
+"Bug Tracker" = "https://github.com/thearchit3ct/gitmove/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.black]
 line-length = 88
-target-version = ["py38"]
+target-version = ["py39"]
+
 
 [tool.isort]
 profile = "black"
@@ -260,7 +261,8 @@ pip install gitmove
 Pour le développement :
 
 ```bash
-git clone https://github.com/username/gitmove.git
+
+git clone https://github.com/thearchit3ct/gitmove.git
 cd gitmove
 pip install -e ".[dev]"
 ```

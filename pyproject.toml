@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gitmove"
-version = "0.1.0"
+version = "0.2.0"
 description = "Gestionnaire de branches Git intelligent"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Thearchit3ct", email = "votre.thearchit3ct@outlook.fr"}
+    {name = "Thearchit3ct", email = "thearchit3ct@outlook.fr"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

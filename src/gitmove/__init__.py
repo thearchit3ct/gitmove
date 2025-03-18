@@ -2,7 +2,8 @@
 GitMove - Gestionnaire de branches Git intelligent
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
+
 __author__ = "Thearchit3ct"
 __email__ = "thearchit3ct@outlook.com"
 
@@ -12,8 +13,8 @@ from gitmove.core.sync_manager import SyncManager
 from gitmove.core.strategy_advisor import StrategyAdvisor
 from gitmove.config import Config
 from gitmove.plugins import PluginManager, hook
-from gitmove.config_validator import ConfigValidator
 from gitmove.env_config import EnvConfigLoader
+from gitmove.validators.config_validator import ConfigValidator
 
 __all__ = [
     "BranchManager",

@@ -13,16 +13,13 @@ import re
 import json
 import typing
 from typing import Any, Dict, List, Optional, Union
-from gitmove.validators.config_validator import ConfigValidator
-from gitmove.commands.env_config import EnvConfigLoader
 
-
-class EnvConfigManager:
+class EnvConfigLoader:
     """
-    Gestionnaire de configuration par variables d'environnement pour GitMove.
+    Advanced environment variable configuration loader for GitMove.
     
-    Utilise le ConfigValidator pour garantir la cohérence avec le reste du système.
-
+    Supports hierarchical configuration, type conversion, 
+    and nested environment variable parsing.
     """
     
     # Prefix for GitMove-specific environment variables
@@ -296,30 +293,42 @@ class EnvConfigManager:
         return errors
 
 # Optional configuration loader
-@staticmethod
-def load_env_config(base_config: Optional[Dict] = None) -> Dict:
+def load_env_config(
+    base_config: Optional[Dict] = None, 
+    prefix: Optional[str] = None
+) -> Dict:
     """
-    Charge la configuration depuis les variables d'environnement.
+    Load and merge environment configuration.
     
     Args:
-        base_config: Configuration de base à enrichir
-        
+        base_config: Base configuration to merge with
+        prefix: Custom environment variable prefix
+    
     Returns:
-        Configuration enrichie
+        Merged configuration dictionary
     """
-    # Obtenir un validateur pour accéder au schéma
-    validator = ConfigValidator()
+    config = base_config or {}
     
-    # Charger depuis les variables d'environnement
-    env_loader = EnvConfigLoader()
-    env_config = env_loader.load_config(base_config=base_config)
-    
-    # Valider et normaliser la configuration
     try:
-        normalized_config = validator.validate_config(env_config)
-        return normalized_config
-    except ValueError:
-        # En cas d'erreur de validation, on retourne la configuration de base
-        # ou une configuration vide si aucune n'a été fournie
-        return base_config or {}
-
+        # Load and merge environment variables
+        env_config = EnvConfigLoader.load_config(
+            base_config=config, 
+            prefix=prefix
+        )
+        
+        # Validate the loaded configuration
+        validation_errors = EnvConfigLoader.validate_env_config(env_config)
+        
+        if validation_errors:
+            # Log or handle validation errors
+            print("Environment configuration validation warnings:")
+            for section, errors in validation_errors.items():
+                print(f"{section.capitalize()} Errors:")
+                for error in errors:
+                    print(f"  - {error}")
+        
+        return env_config
+    
+    except Exception as e:
+        print(f"Error loading environment configuration: {e}")
+        return config

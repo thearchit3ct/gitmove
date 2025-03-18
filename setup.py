@@ -46,7 +46,7 @@ except Exception as e:
     # Définir des valeurs par défaut si pyproject.toml ne peut pas être lu
     project_data = {
         "name": "gitmove",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "description": "Gestionnaire de branches Git intelligent",
         "dependencies": [
             "gitpython>=3.1.0",
@@ -75,7 +75,7 @@ setup(
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     author=", ".join(authors) if authors else "GitMove Contributors",
-    url=project_data.get("urls", {}).get("Homepage", "https://github.com/username/gitmove"),
+    url=project_data.get("urls", {}).get("Homepage", "https://github.com/thearchit3ct/gitmove"),
     
     # Configuration des packages
     packages=find_packages(where="src"),
@@ -108,15 +108,15 @@ setup(
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Topic :: Software Development :: Version Control :: Git",
     ]),
     license="MIT",
     keywords="git branch management workflow automation",
     project_urls=project_data.get("urls", {
-        "Bug Tracker": "https://github.com/username/gitmove/issues",
+        "Bug Tracker": "https://github.com/thearchit3ct/gitmove/issues",
         "Documentation": "https://github.com/thearchit3ct/gitmove/wiki",
     }),
     
