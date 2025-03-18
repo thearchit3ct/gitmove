@@ -16,6 +16,8 @@ GitMove est un gestionnaire de branches Git intelligent conçu pour simplifier e
 - Support des branches locales et distantes
 - Visualisation claire des branches à nettoyer
 
+- Visualisation claire des branches à nettoyer
+
 ### 2. Synchronisation Intelligente
 - Synchronisation automatique avec la branche principale
 - Stratégies de fusion et de rebase configurables
@@ -186,6 +188,7 @@ GitMove propose une interface en ligne de commande riche et interactive:
 - **Auto-complétion** des commandes et options
 
 ## 🤝 Contribution
+
 
 ### Installation de Développement
 

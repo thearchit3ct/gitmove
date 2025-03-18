@@ -956,10 +956,10 @@ def completion(shell, install, output, verbose, quiet, config):
             
             with ui_manager.progress as progress:
                 tasks = progress.start_progress([f"Installation pour {shell}"])
-                
+ 
                 # Installer le script
                 success, message = install_completion(shell)
-                
+
                 progress.finish_progress(f"Installation pour {shell}")
             
             # Afficher le résultat

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import toml
-
 from gitmove.validators.config_validator import ConfigValidator
 from gitmove.env_config import EnvConfigLoader
 

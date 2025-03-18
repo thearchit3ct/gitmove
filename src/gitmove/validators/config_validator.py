@@ -1,6 +1,5 @@
 """
 Standardized Configuration Validation for GitMove
-
 Provides comprehensive configuration validation with detailed error reporting,
 environment variable support, and extended schema validation.
 """
@@ -9,7 +8,6 @@ import os
 import re
 import sys
 from typing import Any, Dict, List, Optional, Union, Set, Tuple
-
 import toml
 from rich.console import Console
 from rich.panel import Panel
@@ -277,7 +275,7 @@ class ConfigValidator:
             
             # Add validated section to normalized config
             normalized_config[section_name] = section_data
-        
+
         # Validate each section
         for section, schema in self._CONFIG_SCHEMA.items():
             section_config = config.get(section, {})
@@ -434,7 +432,7 @@ class ConfigValidator:
                 f"Branch age threshold is very short ({age_threshold} days). "
                 "This may lead to premature branch cleanup."
             )
-        
+
         # Sync recommendations
         if not current_config.get('sync', {}).get('auto_sync', True):
             recommendations['auto_sync'] = (
