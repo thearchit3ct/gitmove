@@ -67,6 +67,7 @@ def cli():
     """
     pass
 
+# Register commands from modules
 register_cicd_commands(cli)
 generate_ci_config(cli)
 register_env_config_commands(cli)
@@ -344,51 +345,6 @@ def sync(strategy, branch, verbose, quiet, config):
         # Utiliser le formateur d'erreurs
         ui_manager.error_fmt.format_error(e, verbose=verbose)
         sys.exit(1)
-
-@config.command('validate')
-@click.option('--config', '-c', type=click.Path(exists=True), help='Chemin du fichier de configuration')
-def validate_config(config):
-    """Valide le fichier de configuration."""
-    console = Console()
-    
-    try:
-        config_obj = Config()
-        if config:
-            config_obj.load_from_file(config)
-        
-        errors = config_obj.validate()
-        
-        if not errors:
-            console.print("[green]La configuration est valide.[/green]")
-            
-            # Afficher les recommandations
-            recommendations = config_obj.get_recommendations()
-            if recommendations:
-                console.print("\n[yellow]Recommandations:[/yellow]")
-                for key, recommendation in recommendations.items():
-                    console.print(f"- {recommendation}")
-        else:
-            console.print("[red]Erreurs de configuration :[/red]")
-            for error in errors:
-                console.print(f"  - {error}")
-            sys.exit(1)
-    
-    except Exception as e:
-        console.print(f"[red]Erreur lors de la validation : {e}[/red]")
-        sys.exit(1)
-
-@config.command('generate')
-@click.option('--output', '-o', type=click.Path(), help='Chemin de sortie pour la configuration')
-def generate_config(output):
-    """Génère un exemple de fichier de configuration."""
-    config_obj = Config()
-    sample_config = config_obj.generate_sample_config(output)
-    
-    console = Console()
-    if not output:
-        console.print(sample_config)
-    else:
-        console.print(f"[green]Configuration d'exemple générée dans {output}[/green]")
 
 @cli.command("advice")
 @click.option(
@@ -1000,10 +956,10 @@ def completion(shell, install, output, verbose, quiet, config):
             
             with ui_manager.progress as progress:
                 tasks = progress.start_progress([f"Installation pour {shell}"])
-                
+ 
                 # Installer le script
                 success, message = install_completion(shell)
-                
+
                 progress.finish_progress(f"Installation pour {shell}")
             
             # Afficher le résultat
