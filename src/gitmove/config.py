@@ -9,8 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import toml
 
-from gitmove.validators.config_validator import ConfigValidator
-from gitmove.env_config import load_env_config
+
 
 # Configuration par défaut
 DEFAULT_CONFIG = {
@@ -82,7 +81,9 @@ class Config:
                 config.config_path = str(repo_config)
         
         # 3. Fusionner avec les variables d'environnement
-        env_config = load_env_config(config.config)
+        # Import ici pour éviter les importations circulaires
+        from gitmove.env_config import EnvConfigManager
+        env_config = EnvConfigManager.load_config(config.config)
         config.config.update(env_config)
         
         # 4. Valider la configuration finale
