@@ -8,14 +8,22 @@ Ces fonctions sont utilisées par les autres modules du projet GitMove.
 import os
 import re
 import datetime
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union, Any, Callable
 
 from git import Git, Repo
-from git.exc import GitCommandError
+from git.exc import GitCommandError, InvalidGitRepositoryError
+
+from gitmove.utils.logger import get_logger
+from gitmove.utils.recovery_manager import RecoveryManager
+from gitmove.exceptions import (
+    GitError, InvalidRepositoryError, BranchError, 
+    MissingBranchError, DirtyWorkingTreeError, MergeConflictError,
+    SyncError, OperationError, convert_git_error
+)
 
 def get_repo(path: Optional[str] = None) -> Repo:
     """
-    Obtient une instance du dépôt Git.
+    Obtient une instance du dépôt Git avec gestion des erreurs.
     
     Args:
         path: Chemin vers le dépôt Git. Si None, utilise le répertoire courant.
@@ -24,16 +32,44 @@ def get_repo(path: Optional[str] = None) -> Repo:
         Instance du dépôt Git
         
     Raises:
-        ValueError: Si le chemin spécifié n'est pas un dépôt Git valide
+        InvalidRepositoryError: Si le chemin spécifié n'est pas un dépôt Git valide
     """
     if path is None:
         path = os.getcwd()
     
     try:
         return Repo(path, search_parent_directories=True)
+    except InvalidGitRepositoryError as e:
+        raise InvalidRepositoryError(
+            f"Impossible de trouver un dépôt Git valide dans {path}", 
+            original_error=e
+        )
     except Exception as e:
-        raise ValueError(f"Impossible de trouver un dépôt Git valide dans {path}: {str(e)}")
+        raise GitError(f"Erreur lors de l'accès au dépôt Git: {str(e)}", original_error=e)
 
+def safe_git_command(func: Callable) -> Callable:
+    """
+    Décorateur pour exécuter des commandes Git avec gestion des erreurs.
+    
+    Args:
+        func: Fonction à décorer
+        
+    Returns:
+        Fonction décorée
+    """
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except GitCommandError as e:
+            raise convert_git_error(e)
+        except Exception as e:
+            if isinstance(e, GitError):
+                raise
+            raise GitError(f"Erreur lors de l'exécution de la commande Git: {str(e)}", original_error=e)
+    
+    return wrapper
+
+@safe_git_command
 def get_current_branch(repo: Repo) -> str:
     """
     Obtient le nom de la branche courante.
@@ -50,6 +86,7 @@ def get_current_branch(repo: Repo) -> str:
         # Si HEAD est détaché, on renvoie l'ID du commit
         return repo.git.rev_parse("HEAD", short=True)
 
+@safe_git_command
 def get_main_branch(repo: Repo) -> str:
     """
     Détermine la branche principale du dépôt.
@@ -82,6 +119,7 @@ def get_main_branch(repo: Repo) -> str:
     # Fallback
     return "main"
 
+@safe_git_command
 def is_branch_merged(
     repo: Repo, 
     branch_name: str, 
@@ -126,6 +164,7 @@ def is_branch_merged(
     except GitCommandError:
         return False
 
+@safe_git_command
 def get_branch_last_commit_date(repo: Repo, branch_name: str) -> str:
     """
     Obtient la date du dernier commit sur une branche.
@@ -144,6 +183,7 @@ def get_branch_last_commit_date(repo: Repo, branch_name: str) -> str:
     except GitCommandError:
         return "Inconnue"
 
+@safe_git_command
 def get_branch_age(repo: Repo, branch_name: str) -> int:
     """
     Calcule l'âge d'une branche en jours.
@@ -166,6 +206,7 @@ def get_branch_age(repo: Repo, branch_name: str) -> int:
     except Exception:
         return 0
 
+@safe_git_command
 def get_branch_commit_count(repo: Repo, branch_name: str, base_branch: Optional[str] = None) -> int:
     """
     Compte le nombre de commits dans une branche.
@@ -193,6 +234,7 @@ def get_branch_commit_count(repo: Repo, branch_name: str, base_branch: Optional[
     except Exception:
         return 0
 
+@safe_git_command
 def get_tracking_branch(repo: Repo, branch_name: str) -> Optional[str]:
     """
     Obtient la branche distante suivie par une branche locale.
@@ -219,6 +261,7 @@ def get_tracking_branch(repo: Repo, branch_name: str) -> Optional[str]:
     except GitCommandError:
         return None
 
+@safe_git_command
 def get_branch_divergence(repo: Repo, branch_name: str, target_branch: str) -> Tuple[int, int]:
     """
     Calcule la divergence entre deux branches.
@@ -245,6 +288,7 @@ def get_branch_divergence(repo: Repo, branch_name: str, target_branch: str) -> T
     except GitCommandError:
         return 0, 0
 
+@safe_git_command
 def get_common_ancestor(repo: Repo, branch1: str, branch2: str) -> Optional[str]:
     """
     Trouve l'ancêtre commun entre deux branches.
@@ -263,6 +307,7 @@ def get_common_ancestor(repo: Repo, branch1: str, branch2: str) -> Optional[str]
     except GitCommandError:
         return None
 
+@safe_git_command
 def get_modified_files(repo: Repo, since_commit: str, until_commit: str) -> Set[str]:
     """
     Obtient la liste des fichiers modifiés entre deux commits.
@@ -284,122 +329,186 @@ def get_modified_files(repo: Repo, since_commit: str, until_commit: str) -> Set[
     except GitCommandError:
         return set()
 
-def fetch_updates(repo: Repo) -> bool:
+@safe_git_command
+def fetch_updates(repo: Repo, remote: str = "origin", prune: bool = True) -> bool:
     """
-    Récupère les dernières mises à jour du dépôt distant.
+    Récupère les dernières mises à jour du dépôt distant avec récupération en cas d'erreur.
     
     Args:
         repo: Instance du dépôt Git
+        remote: Nom du dépôt distant
+        prune: Si True, supprime les références disparues
         
     Returns:
-        True si la récupération a réussi, False sinon
+        True si la récupération a réussi
     """
-    try:
-        git = Git(repo.working_dir)
-        git.fetch("--all", "--prune")
+    git = Git(repo.working_dir)
+    recovery = RecoveryManager(repo)
+    
+    with recovery.safe_operation("fetch"):
+        if prune:
+            git.fetch(remote, "--prune")
+        else:
+            git.fetch(remote)
         return True
-    except GitCommandError:
-        return False
 
-def delete_local_branch(repo: Repo, branch_name: str, force: bool = False) -> bool:
+@safe_git_command
+def delete_branch(
+    repo: Repo, 
+    branch_name: str, 
+    force: bool = False, 
+    remote: bool = False,
+    remote_name: str = "origin"
+) -> bool:
     """
-    Supprime une branche locale.
+    Supprime une branche locale ou distante avec vérifications de sécurité.
     
     Args:
         repo: Instance du dépôt Git
         branch_name: Nom de la branche à supprimer
         force: Si True, force la suppression même si la branche n'est pas fusionnée
-        
-    Returns:
-        True si la suppression a réussi, False sinon
-    """
-    try:
-        git = Git(repo.working_dir)
-        delete_option = "-D" if force else "-d"
-        git.branch(delete_option, branch_name)
-        return True
-    except GitCommandError:
-        return False
-
-def delete_remote_branch(
-    repo: Repo, 
-    branch_name: str, 
-    remote_name: str = "origin"
-) -> bool:
-    """
-    Supprime une branche distante.
-    
-    Args:
-        repo: Instance du dépôt Git
-        branch_name: Nom de la branche à supprimer
+        remote: Si True, supprime la branche distante
         remote_name: Nom du dépôt distant
         
     Returns:
-        True si la suppression a réussi, False sinon
+        True si la suppression a réussi
     """
+    from gitmove.utils.git_commands import get_current_branch
+    
+    git = Git(repo.working_dir)
+    recovery = RecoveryManager(repo)
+    
+    # Vérifier que la branche existe
+    if remote:
+        remote_refs = [ref.name.replace(f"{remote_name}/", "") for ref in repo.remotes[remote_name].refs]
+        if branch_name not in remote_refs:
+            raise MissingBranchError(f"La branche distante '{branch_name}' n'existe pas")
+    else:
+        if branch_name not in [b.name for b in repo.heads]:
+            raise MissingBranchError(f"La branche locale '{branch_name}' n'existe pas")
+    
+    # Vérifier que ce n'est pas la branche courante
+    current_branch = get_current_branch(repo)
+    if not remote and branch_name == current_branch:
+        raise BranchError(
+            f"Impossible de supprimer la branche courante '{branch_name}'. "
+            f"Veuillez d'abord basculer sur une autre branche."
+        )
+    
+    # Sauvegarder l'état pour une éventuelle récupération
+    # Bien que la suppression ne puisse pas être annulée, d'autres opérations pourraient l'être
+    recovery.save_state("pre_delete_branch")
+    
     try:
-        git = Git(repo.working_dir)
-        git.push(remote_name, "--delete", branch_name)
+        if remote:
+            git.push(remote_name, "--delete", branch_name)
+            logger.info(f"Branche distante supprimée: {branch_name}")
+        else:
+            delete_option = "-D" if force else "-d"
+            git.branch(delete_option, branch_name)
+            logger.info(f"Branche locale supprimée: {branch_name}")
         return True
-    except GitCommandError:
-        return False
+    except GitCommandError as e:
+        error_text = str(e)
+        
+        # Messages d'erreur plus explicites pour des cas spécifiques
+        if "not fully merged" in error_text:
+            raise BranchError(
+                f"La branche '{branch_name}' n'est pas entièrement fusionnée. "
+                f"Utilisez l'option 'force' pour forcer la suppression."
+            )
+        elif "Couldn't find remote ref" in error_text:
+            raise MissingBranchError(f"La branche distante '{branch_name}' n'existe pas")
+        
+        raise convert_git_error(e)
 
-def merge_branch(repo: Repo, source_branch: str, target_branch: Optional[str] = None) -> Dict:
+@safe_git_command
+def merge_branch(
+    repo: Repo, 
+    source_branch: str, 
+    target_branch: Optional[str] = None,
+    no_ff: bool = True,
+    message: Optional[str] = None
+) -> Dict:
     """
-    Fusionne une branche dans la branche courante ou dans une branche spécifiée.
+    Fusionne une branche dans la branche courante avec récupération en cas d'erreur.
     
     Args:
         repo: Instance du dépôt Git
         source_branch: Nom de la branche source à fusionner
         target_branch: Nom de la branche cible. Si None, utilise la branche courante.
+        no_ff: Si True, crée toujours un commit de fusion
+        message: Message de commit personnalisé
         
     Returns:
         Dictionnaire contenant le résultat de la fusion
     """
+    from gitmove.utils.git_commands import get_current_branch
+    
     current_branch = get_current_branch(repo)
     target = target_branch or current_branch
     git = Git(repo.working_dir)
+    recovery = RecoveryManager(repo)
     
     # Vérifier si on doit changer de branche
     branch_changed = False
     
-    try:
-        # Changer de branche si nécessaire
-        if current_branch != target:
-            git.checkout(target)
-            branch_changed = True
+    with recovery.safe_operation("merge"):
+        # Sauvegarder l'état actuel
+        recovery.save_state("pre_merge")
         
-        # Effectuer la fusion
-        git.merge(source_branch, "--no-ff")
-        
-        return {
-            "success": True,
-            "message": f"Fusion de '{source_branch}' dans '{target}' réussie",
-            "branch_changed": branch_changed
-        }
-    except GitCommandError as e:
-        # En cas d'erreur, annuler la fusion
         try:
-            git.merge("--abort")
-        except GitCommandError:
-            pass
-        
-        return {
-            "success": False,
-            "error": str(e),
-            "branch_changed": branch_changed
-        }
-    finally:
-        # Revenir à la branche d'origine si nécessaire
-        if branch_changed:
+            # Changer de branche si nécessaire
+            if current_branch != target:
+                git.checkout(target)
+                branch_changed = True
+            
+            # Construire les arguments de la commande merge
+            merge_args = []
+            if no_ff:
+                merge_args.append("--no-ff")
+            if message:
+                merge_args.extend(["-m", message])
+            merge_args.append(source_branch)
+            
+            # Effectuer la fusion
+            git.merge(*merge_args)
+            
+            return {
+                "success": True,
+                "message": f"Fusion de '{source_branch}' dans '{target}' réussie",
+                "branch_changed": branch_changed
+            }
+        except GitCommandError as e:
+            # En cas d'erreur, annuler la fusion
             try:
-                git.checkout(current_branch)
+                git.merge("--abort")
             except GitCommandError:
                 pass
+            
+            error = convert_git_error(e, f"Erreur lors de la fusion de {source_branch} dans {target}")
+            
+            # Si c'est un conflit, donner plus d'informations
+            if isinstance(error, MergeConflictError):
+                error.message += ". Résolvez les conflits avant de continuer."
+            
+            raise error
+        finally:
+            # Revenir à la branche d'origine si nécessaire
+            if branch_changed:
+                try:
+                    git.checkout(current_branch)
+                except GitCommandError as e:
+                    logger.error(f"Erreur lors du retour à la branche d'origine: {str(e)}")
 
-def rebase_branch(repo: Repo, base_branch: str, target_branch: Optional[str] = None) -> Dict:
+@safe_git_command
+def rebase_branch(
+    repo: Repo, 
+    base_branch: str, 
+    target_branch: Optional[str] = None
+) -> Dict:
     """
-    Rebase une branche sur une autre.
+    Rebase une branche sur une autre avec récupération en cas d'erreur.
     
     Args:
         repo: Instance du dépôt Git
@@ -409,43 +518,122 @@ def rebase_branch(repo: Repo, base_branch: str, target_branch: Optional[str] = N
     Returns:
         Dictionnaire contenant le résultat du rebase
     """
+    from gitmove.utils.git_commands import get_current_branch
+    
     current_branch = get_current_branch(repo)
     target = target_branch or current_branch
     git = Git(repo.working_dir)
+    recovery = RecoveryManager(repo)
     
     # Vérifier si on doit changer de branche
     branch_changed = False
     
-    try:
-        # Changer de branche si nécessaire
-        if current_branch != target:
-            git.checkout(target)
-            branch_changed = True
+    with recovery.safe_operation("rebase"):
+        # Sauvegarder l'état actuel
+        recovery.save_state("pre_rebase")
         
-        # Effectuer le rebase
-        git.rebase(base_branch)
-        
-        return {
-            "success": True,
-            "message": f"Rebase de '{target}' sur '{base_branch}' réussi",
-            "branch_changed": branch_changed
-        }
-    except GitCommandError as e:
-        # En cas d'erreur, annuler le rebase
         try:
-            git.rebase("--abort")
-        except GitCommandError:
-            pass
-        
-        return {
-            "success": False,
-            "error": str(e),
-            "branch_changed": branch_changed
-        }
-    finally:
-        # Revenir à la branche d'origine si nécessaire
-        if branch_changed:
+            # Changer de branche si nécessaire
+            if current_branch != target:
+                git.checkout(target)
+                branch_changed = True
+            
+            # Effectuer le rebase
+            git.rebase(base_branch)
+            
+            return {
+                "success": True,
+                "message": f"Rebase de '{target}' sur '{base_branch}' réussi",
+                "branch_changed": branch_changed
+            }
+        except GitCommandError as e:
+            # En cas d'erreur, annuler le rebase
             try:
-                git.checkout(current_branch)
+                git.rebase("--abort")
             except GitCommandError:
                 pass
+            
+            error = convert_git_error(e, f"Erreur lors du rebase de {target} sur {base_branch}")
+            
+            # Si c'est un conflit, donner plus d'informations
+            if isinstance(error, MergeConflictError):
+                error.message += ". Résolvez les conflits avant de continuer."
+            
+            raise error
+        finally:
+            # Revenir à la branche d'origine si nécessaire
+            if branch_changed:
+                try:
+                    git.checkout(current_branch)
+                except GitCommandError as e:
+                    logger.error(f"Erreur lors du retour à la branche d'origine: {str(e)}")
+
+@safe_git_command
+def apply_stash(repo: Repo, stash_id: str, delete_after: bool = True) -> bool:
+    """
+    Applique un stash existant.
+    
+    Args:
+        repo: Instance du dépôt Git
+        stash_id: ID du stash à appliquer
+        delete_after: Si True, supprime le stash après l'avoir appliqué
+        
+    Returns:
+        True si le stash a été appliqué avec succès
+    """
+    git = Git(repo.working_dir)
+    recovery = RecoveryManager(repo)
+    
+    with recovery.safe_operation("apply_stash"):
+        # Sauvegarder l'état actuel
+        recovery.save_state("pre_stash_apply")
+        
+        # Appliquer le stash
+        git.stash("apply", stash_id)
+        
+        # Supprimer le stash si demandé
+        if delete_after:
+            git.stash("drop", stash_id)
+        
+        return True
+
+@safe_git_command
+def stash_changes(repo: Repo, message: Optional[str] = None, include_untracked: bool = True) -> Optional[str]:
+    """
+    Crée un stash avec les modifications actuelles.
+    
+    Args:
+        repo: Instance du dépôt Git
+        message: Message pour le stash
+        include_untracked: Si True, inclut les fichiers non suivis
+        
+    Returns:
+        ID du stash créé ou None si aucun changement à sauvegarder
+    """
+    git = Git(repo.working_dir)
+    
+    # Vérifier s'il y a des changements à sauvegarder
+    if not repo.is_dirty(untracked_files=include_untracked):
+        return None
+    
+    # Préparer la commande
+    stash_args = ["save"]
+    if include_untracked:
+        stash_args.append("--include-untracked")
+    if message:
+        stash_args.append(message)
+    
+    # Créer le stash
+    result = git.stash(*stash_args)
+    
+    # Vérifier si le stash a été créé
+    if result.startswith("No local changes to save"):
+        return None
+    
+    # Récupérer l'ID du stash
+    stash_list = git.stash("list")
+    if stash_list:
+        stash_id = stash_list.splitlines()[0].split(":")[0].strip()
+        return stash_id
+    
+    return None
