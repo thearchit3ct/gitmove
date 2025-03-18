@@ -13,8 +13,6 @@ import re
 import json
 import typing
 from typing import Any, Dict, List, Optional, Union
-from gitmove.validators.config_validator import ConfigValidator
-from gitmove.commands.env_config import EnvConfigLoader
 
 
 class EnvConfigManager:
@@ -306,12 +304,14 @@ def load_env_config(base_config: Optional[Dict] = None) -> Dict:
     Returns:
         Configuration enrichie
     """
+    # Import ici pour éviter les importations circulaires
+    from gitmove.validators.config_validator import ConfigValidator
+    
     # Obtenir un validateur pour accéder au schéma
     validator = ConfigValidator()
     
     # Charger depuis les variables d'environnement
-    env_loader = EnvConfigLoader()
-    env_config = env_loader.load_config(base_config=base_config)
+    env_config = EnvConfigManager.load_config(base_config=base_config)
     
     # Valider et normaliser la configuration
     try:
@@ -320,5 +320,4 @@ def load_env_config(base_config: Optional[Dict] = None) -> Dict:
     except ValueError:
         # En cas d'erreur de validation, on retourne la configuration de base
         # ou une configuration vide si aucune n'a été fournie
-
         return base_config or {}

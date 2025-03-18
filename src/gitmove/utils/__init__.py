@@ -17,8 +17,7 @@ from gitmove.utils.git_commands import (
     get_common_ancestor,
     get_modified_files,
     fetch_updates,
-    delete_local_branch,
-    delete_remote_branch,
+    delete_branch,
     merge_branch,
     rebase_branch,
 )
@@ -44,8 +43,7 @@ __all__ = [
     "get_common_ancestor",
     "get_modified_files",
     "fetch_updates",
-    "delete_local_branch",
-    "delete_remote_branch",
+    "delete_branch",
     "merge_branch",
     "rebase_branch",
     

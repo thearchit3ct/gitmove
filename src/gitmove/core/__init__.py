@@ -6,11 +6,6 @@ centrales de GitMove : gestion des branches, détection de conflits,
 synchronisation et conseils de stratégie.
 """
 
-from gitmove.core.branch_manager import BranchManager
-from gitmove.core.conflict_detector import ConflictDetector
-from gitmove.core.sync_manager import SyncManager
-from gitmove.core.strategy_advisor import StrategyAdvisor
-
 # Version du module core
 __version__ = "0.1.0"
 
@@ -38,6 +33,12 @@ def initialize_managers(repo, config):
     Returns:
         Dictionnaire contenant les instances des gestionnaires
     """
+    # Importer les classes ici pour éviter les importations circulaires
+    from gitmove.core.branch_manager import BranchManager
+    from gitmove.core.conflict_detector import ConflictDetector
+    from gitmove.core.sync_manager import SyncManager
+    from gitmove.core.strategy_advisor import StrategyAdvisor
+    
     branch_manager = BranchManager(repo, config)
     conflict_detector = ConflictDetector(repo, config)
     sync_manager = SyncManager(repo, config)

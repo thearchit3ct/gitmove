@@ -19,8 +19,7 @@ from gitmove.utils.git_commands import (
     get_current_branch,
     is_branch_merged,
     get_branch_last_commit_date,
-    delete_local_branch,
-    delete_remote_branch,
+    delete_branch,
     get_tracking_branch,
 )
 from gitmove.utils.logger import get_logger
@@ -204,10 +203,10 @@ class BranchManager:
             try:
                 if is_remote:
                     if include_remote:
-                        delete_remote_branch(self.repo, branch_name)
+                        delete_branch(self.repo, branch_name, remote=True)
                         cleaned_branches.append(f"origin/{branch_name}")
                 else:
-                    delete_local_branch(self.repo, branch_name)
+                    delete_branch(self.repo, branch_name)
                     cleaned_branches.append(branch_name)
                     
                     # Si nous nettoyons également les branches distantes et que la branche a un tracking
@@ -215,7 +214,7 @@ class BranchManager:
                         remote_name = branch["tracking"].split("/")[0]
                         remote_branch = branch["tracking"].split("/", 1)[1]
                         try:
-                            delete_remote_branch(self.repo, remote_branch, remote_name)
+                            delete_branch(self.repo, remote_branch, remote= True, remote_name=remote_name)
                             cleaned_branches.append(branch["tracking"])
                         except GitCommandError:
                             failed_branches.append(branch["tracking"])

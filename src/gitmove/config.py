@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import toml
-from gitmove.validators.config_validator import ConfigValidator
-from gitmove.env_config import EnvConfigLoader
 
 # Configuration par défaut
 DEFAULT_CONFIG = {
@@ -51,15 +49,8 @@ class Config:
     
     def __init__(self):
         """Initialise une nouvelle configuration avec les valeurs par défaut."""
-        self.validator = ConfigValidator()
-        # Créer les valeurs par défaut à partir du schéma de validation
-        schema = self.validator.get_schema_section()
-        self.config = {}
-        for section, section_schema in schema.items():
-            self.config[section] = {}
-            for key, rules in section_schema.items():
-                self.config[section][key] = rules.get('default')
-        
+        # Créer les valeurs par défaut
+        self.config = DEFAULT_CONFIG.copy()
         self.config_path = None
     
     @classmethod
@@ -88,12 +79,17 @@ class Config:
                 config.config_path = str(repo_config)
         
         # 3. Fusionner avec les variables d'environnement
-        env_config = EnvConfigManager.load_env_config(config.config)
+        # Import ici pour éviter les importations circulaires
+        from gitmove.env_config import EnvConfigManager
+        env_config = EnvConfigManager.load_config(config.config)
         config.config.update(env_config)
         
         # 4. Valider la configuration finale
         try:
-            config.config = config.validator.validate_config(config.config)
+            # Import ici pour éviter les importations circulaires
+            from gitmove.validators.config_validator import ConfigValidator
+            validator = ConfigValidator()
+            config.config = validator.validate_config(config.config)
         except ValueError as e:
             print(f"Erreur de configuration : {e}")
         
@@ -255,9 +251,13 @@ class Config:
         Returns:
             Liste des problèmes trouvés. Liste vide si tout est valide.
         """
+        # Import ici pour éviter les importations circulaires
+        from gitmove.validators.config_validator import ConfigValidator
+        validator = ConfigValidator()
+        
         try:
             # Utiliser le validateur consolidé
-            self.validator.validate_config(self.config)
+            validator.validate_config(self.config)
             return []
         except ValueError as e:
             # Capturer les messages d'erreur
@@ -271,16 +271,16 @@ class Config:
                 errors = []
                 try:
                     # Désactiver temporairement la console
-                    original_console = self.validator.console
-                    self.validator.console = None
+                    original_console = validator.console
+                    validator.console = None
                     
                     try:
-                        self.validator.validate_config(self.config)
+                        validator.validate_config(self.config)
                     except Exception:
                         pass
                     
                     # Restaurer la console
-                    self.validator.console = original_console
+                    validator.console = original_console
                 except Exception:
                     # En cas d'échec, renvoyer le message d'erreur original
                     return [error_message]
@@ -300,7 +300,10 @@ class Config:
         Returns:
             Dictionnaire de recommandations
         """
-        return self.validator.recommend_configuration(self.config)
+        # Import ici pour éviter les importations circulaires
+        from gitmove.validators.config_validator import ConfigValidator
+        validator = ConfigValidator()
+        return validator.recommend_configuration(self.config)
     
     def generate_sample_config(self, output_path: Optional[str] = None) -> str:
         """
@@ -312,42 +315,7 @@ class Config:
         Returns:
             Contenu de la configuration d'exemple
         """
-        return self.validator.generate_sample_config(output_path)
-    
-    def diff_with(self, other_config: 'Config') -> Dict:
-        """
-        Compare cette configuration avec une autre et retourne les différences.
-        
-        Args:
-            other_config: Autre configuration à comparer
-            
-        Returns:
-            Dictionnaire des différences
-        """
-        return self.validator.diff_configs(self.config, other_config.config)
-        
-    def merge_with(self, other_config: 'Config', overwrite: bool = True) -> 'Config':
-        """
-        Fusionne cette configuration avec une autre.
-        
-        Args:
-            other_config: Autre configuration à fusionner
-            overwrite: Si True, la configuration fournie écrase les valeurs existantes
-            
-        Returns:
-            Nouvelle instance Config avec les configurations fusionnées
-        """
-        if overwrite:
-            base = self.config
-            override = other_config.config
-        else:
-            base = other_config.config
-            override = self.config
-            
-        merged_dict = self.validator.merge_configs(base, override)
-        
-        # Créer une nouvelle instance avec la configuration fusionnée
-        merged_config = Config()
-        merged_config.config = merged_dict
-        
-        return merged_config
+        # Import ici pour éviter les importations circulaires
+        from gitmove.validators.config_validator import ConfigValidator
+        validator = ConfigValidator()
+        return validator.generate_sample_config(output_path)
