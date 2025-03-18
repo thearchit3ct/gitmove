@@ -20,9 +20,16 @@ from gitmove.utils.git_commands import (
     fetch_updates,
     merge_branch,
     rebase_branch,
+    stash_changes, 
+    apply_stash
 )
 from gitmove.utils.logger import get_logger
+from gitmove.utils.recovery_manager import RecoveryManager
 from gitmove.core.conflict_detector import ConflictDetector
+from gitmove.exceptions import (
+    GitError, SyncError, MergeConflictError, DirtyWorkingTreeError,
+    BranchError, OperationError
+)
 
 logger = get_logger(__name__)
 
@@ -45,6 +52,7 @@ class SyncManager:
         self.main_branch = config.get_value("general.main_branch", "main")
         self.default_strategy = config.get_value("sync.default_strategy", "rebase")
         self.conflict_detector = ConflictDetector(repo, config)
+        self.recovery = RecoveryManager(repo)
     
     def check_sync_status(self, branch_name: Optional[str] = None) -> Dict:
         """
@@ -99,7 +107,8 @@ class SyncManager:
     def sync_with_main(
         self, 
         branch_name: Optional[str] = None, 
-        strategy: str = "auto"
+        strategy: str = "auto",
+        force_sync: bool = False
     ) -> Dict:
         """
         Synchronise une branche avec la branche principale.
@@ -107,10 +116,18 @@ class SyncManager:
         Args:
             branch_name: Nom de la branche à synchroniser. Si None, utilise la branche courante.
             strategy: Stratégie à utiliser ('merge', 'rebase' ou 'auto')
+            force_sync: Si True, synchronise même en cas de conflit potentiel
             
         Returns:
             Dictionnaire contenant les résultats de la synchronisation
+            
+        Raises:
+            SyncError: En cas d'erreur lors de la synchronisation
+            MergeConflictError: En cas de conflit de fusion
+            DirtyWorkingTreeError: Si le répertoire de travail contient des modifications non commitées
         """
+        from gitmove.utils.git_commands import get_current_branch
+        
         if branch_name is None:
             branch_name = get_current_branch(self.repo)
         
@@ -125,36 +142,67 @@ class SyncManager:
                 "message": "La branche est déjà à jour avec la branche principale"
             }
         
+        # Vérifier si le répertoire de travail est propre
+        if self.repo.is_dirty(untracked_files=True):
+            # Tenter de stasher les modifications
+            try:
+                stash_id = stash_changes(
+                    self.repo, 
+                    message=f"GitMove auto-stash avant synchronisation de {branch_name}"
+                )
+                
+                if stash_id:
+                    logger.info(f"Modifications stashées: {stash_id}")
+                    
+                    # Enregistrer l'ID du stash pour une éventuelle restauration
+                    self.recovery.register_recovery_action(
+                        apply_stash,
+                        self.repo,
+                        stash_id
+                    )
+            except GitError as e:
+                raise DirtyWorkingTreeError(
+                    "Le répertoire de travail contient des modifications non commitées. "
+                    "Veuillez commiter ou stasher vos modifications avant de continuer.",
+                    original_error=e
+                )
+        
         # Choisir la stratégie si 'auto'
         if strategy == "auto":
             strategy = self._determine_sync_strategy(branch_name, self.main_branch)
         
         # Vérifier les conflits potentiels avant la synchronisation
-        conflicts = self.conflict_detector.detect_conflicts(branch_name, self.main_branch)
+        if not force_sync:
+            conflicts = self.conflict_detector.detect_conflicts(branch_name, self.main_branch)
+            
+            if conflicts["has_conflicts"]:
+                return {
+                    "status": "conflicts",
+                    "branch": branch_name,
+                    "target": self.main_branch,
+                    "strategy": strategy,
+                    "conflicts": conflicts,
+                    "message": f"{len(conflicts['conflicting_files'])} conflit(s) potentiel(s) détecté(s)"
+                }
         
-        if conflicts["has_conflicts"]:
-            return {
-                "status": "conflicts",
-                "branch": branch_name,
-                "target": self.main_branch,
-                "strategy": strategy,
-                "conflicts": conflicts,
-                "message": f"{len(conflicts['conflicting_files'])} conflit(s) potentiel(s) détecté(s)"
-            }
-        
-        # Sauvegarder la branche actuelle
-        current_branch = get_current_branch(self.repo)
+        # Sauvegarder l'état actuel pour une éventuelle récupération
+        self.recovery.save_state("pre_sync")
         
         try:
-            # S'assurer d'être sur la bonne branche
-            if current_branch != branch_name:
-                self.git.checkout(branch_name)
-            
-            # Effectuer la synchronisation
+            # Effectuer la synchronisation avec la méthode améliorée appropriée
             if strategy == "merge":
-                result = merge_branch(self.repo, self.main_branch)
+                result = merge_branch(
+                    self.repo, 
+                    self.main_branch, 
+                    target_branch=branch_name,
+                    message=f"Fusion de {self.main_branch} dans {branch_name} via GitMove"
+                )
             else:  # rebase
-                result = rebase_branch(self.repo, self.main_branch)
+                result = rebase_branch(
+                    self.repo, 
+                    self.main_branch, 
+                    target_branch=branch_name
+                )
             
             if result["success"]:
                 return {
@@ -162,7 +210,8 @@ class SyncManager:
                     "branch": branch_name,
                     "target": self.main_branch,
                     "strategy": strategy,
-                    "message": f"Synchronisation réussie avec la stratégie '{strategy}'"
+                    "message": f"Synchronisation réussie avec la stratégie '{strategy}'",
+                    "details": result
                 }
             else:
                 return {
@@ -170,28 +219,41 @@ class SyncManager:
                     "branch": branch_name,
                     "target": self.main_branch,
                     "strategy": strategy,
-                    "error": result["error"],
-                    "message": f"Échec de la synchronisation: {result['error']}"
+                    "error": result.get("error", "Raison inconnue"),
+                    "message": f"Échec de la synchronisation: {result.get('error', 'Raison inconnue')}"
                 }
         
-        except Exception as e:
-            logger.error(f"Erreur lors de la synchronisation: {str(e)}")
+        except MergeConflictError as e:
+            # Conflit pendant la synchronisation
             return {
-                "status": "error",
+                "status": "conflict_occurred",
                 "branch": branch_name,
                 "target": self.main_branch,
                 "strategy": strategy,
                 "error": str(e),
-                "message": f"Erreur lors de la synchronisation: {str(e)}"
+                "message": f"Conflit lors de la synchronisation: {str(e)}",
+                "suggestion": "Résolvez les conflits manuellement, puis validez avec git commit"
             }
+            
+        except GitError as e:
+            # Erreur Git générique
+            raise SyncError(
+                f"Erreur lors de la synchronisation de '{branch_name}' avec '{self.main_branch}': {str(e)}",
+                original_error=e
+            )
         
-        finally:
-            # Revenir à la branche d'origine si nécessaire
-            if current_branch != branch_name and current_branch in [b.name for b in self.repo.heads]:
-                try:
-                    self.git.checkout(current_branch)
-                except GitCommandError as e:
-                    logger.error(f"Erreur lors du retour à la branche d'origine: {str(e)}")
+        except Exception as e:
+            # Erreur inattendue
+            logger.error(f"Erreur inattendue lors de la synchronisation: {str(e)}")
+            
+            # Tenter une récupération
+            try:
+                self.recovery.restore_state("pre_sync")
+                logger.info("État restauré avec succès après erreur")
+            except Exception as recovery_error:
+                logger.error(f"Erreur lors de la restauration: {str(recovery_error)}")
+            
+            raise SyncError(f"Erreur inattendue lors de la synchronisation: {str(e)}", original_error=e)
     
     def _determine_sync_strategy(self, branch_name: str, target_branch: str) -> str:
         """
@@ -214,6 +276,7 @@ class SyncManager:
         # Sinon, calculer la stratégie optimale
         try:
             # 1. Nombre de commits en avance
+            from gitmove.utils.git_commands import get_branch_divergence
             ahead, behind = get_branch_divergence(self.repo, branch_name, target_branch)
             
             # Règle : Si peu de commits en avance, préférer le rebase
@@ -255,7 +318,7 @@ class SyncManager:
             logger.error(f"Erreur lors de la détermination de la stratégie: {str(e)}")
             # En cas d'erreur, revenir à la stratégie par défaut
             return "merge" if self.default_strategy not in ["merge", "rebase"] else self.default_strategy
-    
+        
     def schedule_sync(self, frequency: str = "daily") -> Dict:
         """
         Planifie une synchronisation automatique.
@@ -284,3 +347,16 @@ class SyncManager:
             "strategy": self.default_strategy,
             "message": f"Synchronisation planifiée avec fréquence '{frequency}'"
         }
+    
+    def force_sync(self, branch_name: Optional[str] = None, strategy: str = "merge") -> Dict:
+        """
+        Force la synchronisation d'une branche même en cas de conflits potentiels.
+        
+        Args:
+            branch_name: Nom de la branche à synchroniser. Si None, utilise la branche courante.
+            strategy: Stratégie à utiliser ('merge' ou 'rebase')
+            
+        Returns:
+            Dictionnaire contenant les résultats de la synchronisation
+        """
+        return self.sync_with_main(branch_name, strategy, force_sync=True)
