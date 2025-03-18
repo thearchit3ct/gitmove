@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import toml
-
 from gitmove.validators.config_validator import ConfigValidator
+
 from gitmove.env_config import EnvConfigLoader
 
 # Configuration par défaut
@@ -62,6 +62,7 @@ class Config:
                 self.config[section][key] = rules.get('default')
         
         self.config_path = None
+        self.validator = ConfigValidator()
     
     @classmethod
     def load(cls, repo_path: Optional[str] = None) -> 'Config':
@@ -352,3 +353,4 @@ class Config:
         merged_config.config = merged_dict
         
         return merged_config
+

@@ -22,6 +22,7 @@ class EnvConfigManager:
     Gestionnaire de configuration par variables d'environnement pour GitMove.
     
     Utilise le ConfigValidator pour garantir la cohérence avec le reste du système.
+
     """
     
     # Prefix for GitMove-specific environment variables
@@ -321,3 +322,4 @@ def load_env_config(base_config: Optional[Dict] = None) -> Dict:
         # En cas d'erreur de validation, on retourne la configuration de base
         # ou une configuration vide si aucune n'a été fournie
         return base_config or {}
+

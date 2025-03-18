@@ -246,6 +246,7 @@ package-dir = {"" = "src"}
 line-length = 88
 target-version = ["py39"]
 
+
 [tool.isort]
 profile = "black"
 multi_line_output = 3
@@ -260,6 +261,7 @@ pip install gitmove
 Pour le développement :
 
 ```bash
+
 git clone https://github.com/thearchit3ct/gitmove.git
 cd gitmove
 pip install -e ".[dev]"
