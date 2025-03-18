@@ -134,5 +134,7 @@ def convert_git_error(git_error, message=None):
         elif "refusing to pull" in error_text or "refusing to merge" in error_text:
             return SyncError(error_msg, git_error)
         
-    # Par défaut, retourner une erreur Git générique
-    return GitError(error_msg, git_error)
+    if message:
+        return GitError(f"{error_msg} (Causé par: {git_error})")
+    else:
+        return GitError(f"{git_error}")

@@ -61,12 +61,10 @@ def safe_git_command(func: Callable) -> Callable:
         try:
             return func(*args, **kwargs)
         except GitCommandError as e:
-            raise convert_git_error(e)
-        except Exception as e:
-            if isinstance(e, GitError):
-                raise
-            raise GitError(f"Erreur lors de l'exécution de la commande Git: {str(e)}", original_error=e)
-    
+            if "'origin' does not appear to be a git repository" in str(e):
+                raise convert_git_error(e, message="Aucun dépôt distant 'origin' n'est configuré. Utilisez 'git remote add origin <url>' pour configurer un dépôt distant.")
+            else:
+                raise convert_git_error(e)
     return wrapper
 
 @safe_git_command
@@ -85,6 +83,22 @@ def get_current_branch(repo: Repo) -> str:
     except Exception as e:
         # Si HEAD est détaché, on renvoie l'ID du commit
         return repo.git.rev_parse("HEAD", short=True)
+
+def remote_exists(repo, remote_name="origin"):
+    """
+    Vérifie si un dépôt distant existe.
+    
+    Args:
+        repo: L'objet dépôt Git
+        remote_name: Nom du dépôt distant à vérifier
+        
+    Returns:
+        bool: True si le dépôt distant existe, False sinon
+    """
+    try:
+        return remote_name in [remote.name for remote in repo.remotes]
+    except Exception:
+        return False
 
 @safe_git_command
 def get_main_branch(repo: Repo) -> str:
@@ -330,27 +344,23 @@ def get_modified_files(repo: Repo, since_commit: str, until_commit: str) -> Set[
         return set()
 
 @safe_git_command
-def fetch_updates(repo: Repo, remote: str = "origin", prune: bool = True) -> bool:
+def fetch_updates(repo, remote="origin"):
     """
-    Récupère les dernières mises à jour du dépôt distant avec récupération en cas d'erreur.
+    Récupère les mises à jour depuis le dépôt distant.
     
     Args:
-        repo: Instance du dépôt Git
+        repo: L'objet dépôt Git
         remote: Nom du dépôt distant
-        prune: Si True, supprime les références disparues
-        
-    Returns:
-        True si la récupération a réussi
     """
-    git = Git(repo.working_dir)
-    recovery = RecoveryManager(repo)
+    if not remote_exists(repo, remote):
+        raise GitError(
+            f"Le dépôt distant '{remote}' n'existe pas. "
+            f"Utilisez 'git remote add {remote} <url>' pour configurer un dépôt distant "
+            f"ou modifiez la configuration pour utiliser un dépôt distant existant."
+        )
     
-    with recovery.safe_operation("fetch"):
-        if prune:
-            git.fetch(remote, "--prune")
-        else:
-            git.fetch(remote)
-        return True
+    git = repo.git
+    git.fetch(remote, "--prune")
 
 @safe_git_command
 def delete_branch(
