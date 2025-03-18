@@ -1,0 +1,23 @@
+[general]
+main_branch = "master"
+verbose = false
+
+[clean]
+auto_clean = false
+exclude_branches = [ "develop", "staging",]
+age_threshold = 30
+
+[sync]
+default_strategy = "rebase"
+auto_sync = true
+sync_frequency = "daily"
+
+[advice]
+rebase_threshold = 5
+consider_branch_age = true
+force_merge_patterns = [ "feature/*", "release/*",]
+force_rebase_patterns = [ "fix/*", "chore/*",]
+
+[conflict_detection]
+pre_check_enabled = true
+show_diff = true
