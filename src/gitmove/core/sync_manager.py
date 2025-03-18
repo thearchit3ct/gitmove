@@ -80,8 +80,15 @@ class SyncManager:
         # D'abord, s'assurer que nous avons les dernières mises à jour
         try:
             fetch_updates(self.repo)
-        except GitCommandError as e:
-            logger.warning(f"Erreur lors de la récupération des mises à jour: {str(e)}")
+        except GitError as e:
+            if "does not appear to be a git repository" in str(e):
+                return {
+                    "status": "local_only",
+                    "message": "Ce dépôt n'a pas de dépôt distant configuré. La synchronisation n'est pas possible.",
+                    "ahead": 0,
+                    "behind": 0
+                }
+            raise
         
         # Calculer la divergence
         ahead, behind = get_branch_divergence(self.repo, branch_name, self.main_branch)

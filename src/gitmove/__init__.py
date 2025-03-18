@@ -12,7 +12,6 @@ from gitmove.core.sync_manager import SyncManager
 from gitmove.core.strategy_advisor import StrategyAdvisor
 from gitmove.config import Config
 from gitmove.plugins import PluginManager, hook
-from gitmove.env_config import EnvConfigLoader
 from gitmove.validators.config_validator import ConfigValidator
 
 __all__ = [
