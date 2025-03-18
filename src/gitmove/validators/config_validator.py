@@ -1,9 +1,7 @@
 """
 Standardized Configuration Validation for GitMove
-
 Provides comprehensive configuration validation with detailed error reporting,
 environment variable support, and extended schema validation.
-
 """
 
 import os
@@ -28,7 +26,6 @@ class ConfigValidator:
     """
     
     # Configuration schema defining validation rules for all sections
-
     _CONFIG_SCHEMA = {
         "general": {
             "main_branch": {
@@ -42,7 +39,6 @@ class ConfigValidator:
                 "type": bool,
                 "default": False,
                 "description": "Enable verbose logging"
-
             }
         },
         "clean": {
@@ -280,7 +276,6 @@ class ConfigValidator:
             # Add validated section to normalized config
             normalized_config[section_name] = section_data
 
-        
         # Validate each section
         for section, schema in self._CONFIG_SCHEMA.items():
             section_config = config.get(section, {})
@@ -437,7 +432,7 @@ class ConfigValidator:
                 f"Branch age threshold is very short ({age_threshold} days). "
                 "This may lead to premature branch cleanup."
             )
-        
+
         # Sync recommendations
         if not current_config.get('sync', {}).get('auto_sync', True):
             recommendations['auto_sync'] = (
@@ -571,4 +566,3 @@ class ConfigValidator:
             raise ValueError(f"Unknown configuration section: {section}")
         
         return {section: self._CONFIG_SCHEMA[section]}
-
