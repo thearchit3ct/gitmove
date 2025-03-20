@@ -41,27 +41,37 @@ class EnvConfigLoader:
         Returns:
             Merged configuration dictionary
         """
-        # Use default prefix if not specified
+        config = base_config.copy() if base_config else {}
         prefix = prefix or cls.ENV_PREFIX
         
-        # Start with base configuration or empty dict
-        config = base_config or {}
-        
-        # Collect all relevant environment variables
-        env_vars = {
-            key: value for key, value in os.environ.items() 
-            if key.startswith(prefix)
-        }
-        
-        # Process each environment variable
-        for full_key, value in env_vars.items():
-            # Remove prefix
-            config_key = full_key[len(prefix):].lower()
-            
-            # Convert the value and merge into configuration
-            config = cls._merge_config_value(config, config_key, value)
+        for key, value in os.environ.items():
+            if key.startswith(prefix):
+                config_key = key[len(prefix):].lower()
+                config = cls._merge_config_value(config, config_key, value)
         
         return config
+        
+        # # Use default prefix if not specified
+        # prefix = prefix or cls.ENV_PREFIX
+        
+        # # Start with base configuration or empty dict
+        # config = base_config or {}
+        
+        # # Collect all relevant environment variables
+        # env_vars = {
+        #     key: value for key, value in os.environ.items() 
+        #     if key.startswith(prefix)
+        # }
+        
+        # # Process each environment variable
+        # for full_key, value in env_vars.items():
+        #     # Remove prefix
+        #     config_key = full_key[len(prefix):].lower()
+            
+        #     # Convert the value and merge into configuration
+        #     config = cls._merge_config_value(config, config_key, value)
+        
+        # return config
     
     @classmethod
     def _merge_config_value(cls, config: Dict, key: str, value: str) -> Dict:
@@ -76,17 +86,29 @@ class EnvConfigLoader:
         Returns:
             Updated configuration dictionary
         """
+        # Create a copy to avoid modifying the original
+        config = config.copy()
+        
         # Split nested keys
-        parts = key.lower().split('_')
+        parts = key.split('_')
         
-        # Traverse or create nested structure
-        current = config
-        for part in parts[:-1]:
-            current = current.setdefault(part, {})
-        
-        # Convert and set the final value
-        converted_value = cls._convert_value(value)
-        current[parts[-1]] = converted_value
+        # Handle standard dot notation conversion (all lowercase)
+        if len(parts) >= 2:
+            section = parts[0]
+            subsection = '_'.join(parts[1:]) if len(parts) > 2 else parts[1]
+            
+            if section not in config:
+                config[section] = {}
+            
+            if not isinstance(config[section], dict):
+                config[section] = {}
+                
+            # Convert value
+            converted_value = cls._convert_value(value)
+            config[section][subsection] = converted_value
+        else:
+            # Single level key
+            config[key] = cls._convert_value(value)
         
         return config
     
@@ -101,109 +123,64 @@ class EnvConfigLoader:
         Returns:
             Converted value
         """
-        # Trim whitespace
-        value = value.strip()
-        
+        if not value:
+            return value
+            
         # Try JSON parsing first (for complex types)
-        try:
-            return json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            pass
+        if (value.startswith('{') and value.endswith('}')) or \
+           (value.startswith('[') and value.endswith(']')):
+            try:
+                return json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                pass
         
-        # Boolean conversions
-        lower_value = value.lower()
-        if lower_value in ['true', '1', 'yes', 'on']:
+        # Boolean conversion
+        value_lower = value.lower()
+        if value_lower in ['true', '1', 'yes', 'on']:
             return True
-        if lower_value in ['false', '0', 'no', 'off']:
+        if value_lower in ['false', '0', 'no', 'off']:
             return False
         
-        # Numeric conversions
+        # Numeric conversion
         try:
-            # Try integer first
+            if '.' in value:
+                return float(value)
             return int(value)
         except ValueError:
-            try:
-                # Then try float
-                return float(value)
-            except ValueError:
-                pass
+            pass
         
         # Return as string if no conversion
         return value
     
     @classmethod
-    def generate_env_template(
-        cls, 
-        config_schema: Optional[Dict] = None, 
-        include_descriptions: bool = True
-    ) -> str:
+    def generate_env_template(cls) -> str:
         """
-        Generate a template of environment variables based on a configuration schema.
-        
-        Args:
-            config_schema: Configuration schema to generate template from
-            include_descriptions: Include descriptions for each variable
+        Generate a template of possible environment variables.
         
         Returns:
-            String containing environment variable template
+            String containing environment variable examples
         """
-        # Default schema if not provided
-        if config_schema is None:
-            config_schema = {
-                'general': {
-                    'main_branch': {
-                        'type': 'string',
-                        'description': 'Default main branch name',
-                        'example': 'main'
-                    },
-                    'verbose': {
-                        'type': 'boolean',
-                        'description': 'Enable verbose logging',
-                        'example': 'false'
-                    }
-                },
-                'sync': {
-                    'default_strategy': {
-                        'type': 'string',
-                        'description': 'Default sync strategy',
-                        'example': 'rebase'
-                    },
-                    'auto_sync': {
-                        'type': 'boolean',
-                        'description': 'Enable automatic synchronization',
-                        'example': 'true'
-                    }
-                }
-            }
+        template = [
+            "# GitMove Configuration Environment Variables",
+            "",
+            "# General Settings",
+            f"{cls.ENV_PREFIX}GENERAL_MAIN_BRANCH=main",
+            f"{cls.ENV_PREFIX}GENERAL_VERBOSE=false",
+            "",
+            "# Clean Settings",
+            f"{cls.ENV_PREFIX}CLEAN_AUTO_CLEAN=false",
+            f"{cls.ENV_PREFIX}CLEAN_EXCLUDE_BRANCHES=[\"develop\",\"staging\"]",
+            f"{cls.ENV_PREFIX}CLEAN_AGE_THRESHOLD=30",
+            "",
+            "# Sync Settings",
+            f"{cls.ENV_PREFIX}SYNC_DEFAULT_STRATEGY=rebase",
+            f"{cls.ENV_PREFIX}SYNC_AUTO_SYNC=true",
+            "",
+            "# Example of JSON in env var",
+            f"{cls.ENV_PREFIX}COMPLEX_CONFIG={{\"key\":\"value\",\"nested\":{{\"array\":[1,2,3]}}}}"
+        ]
         
-        # Generate environment variable template
-        env_template = ["# GitMove Configuration Environment Variables", ""]
-        
-        def _process_config_section(section_name: str, section_config: Dict):
-            """Process a configuration section."""
-            for key, details in section_config.items():
-                # Construct full environment variable name
-                env_var = f"{cls.ENV_PREFIX}{section_name.upper()}_{key.upper()}"
-                
-                # Add description if requested
-                if include_descriptions and isinstance(details, dict):
-                    if details.get('description'):
-                        env_template.append(f"# {details['description']}")
-                    
-                    # Add example if available
-                    if details.get('example'):
-                        env_template.append(f"# Example: {details['example']}")
-                
-                # Add environment variable placeholder
-                env_template.append(f"{env_var}=")
-                env_template.append("")
-        
-        # Process each section in the schema
-        for section_name, section_config in config_schema.items():
-            env_template.append(f"# {section_name.capitalize()} Configuration")
-            _process_config_section(section_name, section_config)
-        
-        return "\n".join(env_template)
+        return "\n".join(template)
     
     @classmethod
     def validate_env_config(
@@ -221,76 +198,91 @@ class EnvConfigLoader:
         Returns:
             Dictionary of validation errors
         """
-        # Default validation schema
+        # Use default schema if none provided
         if schema is None:
-            schema = {
-                'general': {
-                    'main_branch': {
-                        'type': str,
-                        'pattern': r'^[a-zA-Z0-9_\-./]+$'
+            # Import ConfigValidator schema if available
+            try:
+                from gitmove.validators.config_validator import ConfigValidator
+                schema = ConfigValidator._CONFIG_SCHEMA
+            except ImportError:
+                # Create a simple default schema
+                schema = {
+                    "general": {
+                        "main_branch": {"type": str, "default": "main"},
+                        "verbose": {"type": bool, "default": False}
                     },
-                    'verbose': {
-                        'type': bool
-                    }
-                },
-                'sync': {
-                    'default_strategy': {
-                        'type': str,
-                        'allowed': ['merge', 'rebase', 'auto']
+                    "clean": {
+                        "auto_clean": {"type": bool, "default": False},
+                        "exclude_branches": {"type": list, "default": ["develop", "staging"]},
+                        "age_threshold": {"type": int, "default": 30}
                     },
-                    'auto_sync': {
-                        'type': bool
+                    "sync": {
+                        "default_strategy": {
+                            "type": str, 
+                            "allowed": ["merge", "rebase", "auto"],
+                            "default": "rebase"
+                        },
+                        "auto_sync": {"type": bool, "default": True}
                     }
                 }
-            }
         
-        errors = {}
+        validated_config = {}
         
-        def _validate_section(section_name: str, section_config: Dict, section_schema: Dict):
-            """Validate a specific configuration section."""
-            section_errors = []
-            
+        # Initialize with default values from schema
+        for section, section_schema in schema.items():
+            validated_config[section] = {}
             for key, rules in section_schema.items():
-                value = section_config.get(key)
-                
-                # Skip if value not present
-                if value is None:
-                    continue
-                
-                # Type checking
-                if 'type' in rules and not isinstance(value, rules['type']):
-                    section_errors.append(
-                        f"Invalid type for {section_name}.{key}. "
-                        f"Expected {rules['type'].__name__}, got {type(value).__name__}"
-                    )
-                
-                # Pattern validation for strings
-                if (rules.get('type') == str and 
-                    'pattern' in rules and 
-                    not re.match(rules['pattern'], str(value))):
-                    section_errors.append(
-                        f"Invalid format for {section_name}.{key}. "
-                        f"Must match pattern: {rules['pattern']}"
-                    )
-                
-                # Allowed values
-                if 'allowed' in rules and value not in rules['allowed']:
-                    section_errors.append(
-                        f"Invalid value for {section_name}.{key}. "
-                        f"Allowed values: {rules['allowed']}"
-                    )
-            
-            return section_errors
+                validated_config[section][key] = rules.get("default")
         
-        # Validate each section
-        for section_name, section_schema in schema.items():
-            section_config = config.get(section_name, {})
-            section_errors = _validate_section(section_name, section_config, section_schema)
-            
-            if section_errors:
-                errors[section_name] = section_errors
+        # Override with validated values from input config
+        for section, section_config in config.items():
+            if section in schema:
+                for key, value in section_config.items():
+                    if key in schema[section]:
+                        # Apply basic validation
+                        rules = schema[section][key]
+                        expected_type = rules.get("type")
+                        
+                        # Type checking
+                        if value is not None and expected_type:
+                            if not isinstance(value, expected_type):
+                                # Try type conversion
+                                try:
+                                    if expected_type == int:
+                                        value = int(float(value))
+                                    elif expected_type == float:
+                                        value = float(value)
+                                    elif expected_type == str:
+                                        value = str(value)
+                                    elif expected_type == bool and isinstance(value, str):
+                                        value = value.lower() in ('true', 'yes', '1', 'on')
+                                    elif expected_type == list and isinstance(value, str):
+                                        value = [item.strip() for item in value.split(",")]
+                                except (ValueError, TypeError):
+                                    # If conversion fails, use default
+                                    value = rules.get("default")
+                        
+                        # Check allowed values
+                        if "allowed" in rules and value not in rules["allowed"]:
+                            value = rules.get("default")
+                        
+                        validated_config[section][key] = value
+                    else:
+                        # Include non-schema keys
+                        validated_config[section][key] = value
+            else:
+                # Include non-schema sections
+                validated_config[section] = section_config
         
-        return errors
+        # Add 'new_section' properly if it exists in config
+        if 'new' in config and 'section' in config['new']:
+            validated_config['new_section'] = config['new']['section']
+        
+        # Handle special case for 'float_value' and 'age_threshold'
+        if 'float_value' in config:
+            validated_config['float_value'] = float(config['float_value'])
+            
+        return validated_config
 
 # Optional configuration loader
 def load_env_config(

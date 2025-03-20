@@ -8,6 +8,7 @@ Ce module fournit des fonctionnalités pour :
 """
 
 import os
+import re
 from typing import Dict, List, Optional, Tuple, Union
 
 from git import Git, Repo
@@ -262,69 +263,56 @@ class SyncManager:
             
             raise SyncError(f"Erreur inattendue lors de la synchronisation: {str(e)}", original_error=e)
     
-    def _determine_sync_strategy(self, branch_name: str, target_branch: str) -> str:
+    def _determine_sync_strategy(self, branch: str, target_branch: str) -> str:
         """
         Détermine la stratégie optimale pour la synchronisation.
         
         Args:
-            branch_name: Nom de la branche à synchroniser
+            branch: Nom de la branche à synchroniser
             target_branch: Nom de la branche cible
             
         Returns:
             Stratégie recommandée ('merge' ou 'rebase')
         """
-        # Utiliser la stratégie par défaut configurée
-        strategy = self.default_strategy
-        
-        # Si le default_strategy est déjà soit "merge" soit "rebase", le retourner directement
-        if strategy in ["merge", "rebase"]:
-            return strategy
-        
-        # Sinon, calculer la stratégie optimale
-        try:
-            # 1. Nombre de commits en avance
-            from gitmove.utils.git_commands import get_branch_divergence
-            ahead, behind = get_branch_divergence(self.repo, branch_name, target_branch)
-            
-            # Règle : Si peu de commits en avance, préférer le rebase
-            rebase_threshold = self.config.get_value("advice.rebase_threshold", 5)
-            
-            if ahead <= rebase_threshold:
+        # Obtenir la stratégie par défaut depuis la configuration
+        default_strategy = self.config.get_value("sync.default_strategy", "rebase")
+
+        # Vérifier si un pattern force une stratégie spécifique
+        force_merge_patterns = self.config.get_value("advice.force_merge_patterns", [])
+        force_rebase_patterns = self.config.get_value("advice.force_rebase_patterns", [])
+
+        # Vérifier si la branche correspond à un pattern de merge forcé
+        for pattern in force_merge_patterns:
+            if re.match(pattern, branch):
+                return "merge"
+
+        # Vérifier si la branche correspond à un pattern de rebase forcé
+        for pattern in force_rebase_patterns:
+            if re.match(pattern, branch):
                 return "rebase"
-            
-            # 2. Type de branche
-            force_merge_patterns = self.config.get_value("advice.force_merge_patterns", [])
-            force_rebase_patterns = self.config.get_value("advice.force_rebase_patterns", [])
-            
-            # Vérifier si la branche correspond à un pattern spécifique
-            import fnmatch
-            
-            for pattern in force_merge_patterns:
-                if fnmatch.fnmatch(branch_name, pattern):
+
+        # Obtenir la divergence entre les branches
+        ahead, behind = get_branch_divergence(self.repo, branch, target_branch)
+
+        # Vérifier si on dépasse le seuil de rebase
+        rebase_threshold = self.config.get_value("advice.rebase_threshold", 5)
+        if ahead > rebase_threshold:
+            return "merge"
+
+        # Détecter les conflits potentiels
+        conflicts = self.conflict_detector.detect_conflicts(branch, target_branch)
+
+        # Si des conflits sont détectés, vérifier leur gravité
+        if conflicts.get("has_conflicts", False):
+            conflicting_files = conflicts.get("conflicting_files", [])
+
+            # Vérifier s'il y a des conflits graves
+            for conflict in conflicting_files:
+                if conflict.get("severity") == "Élevée":
                     return "merge"
-            
-            for pattern in force_rebase_patterns:
-                if fnmatch.fnmatch(branch_name, pattern):
-                    return "rebase"
-            
-            # 3. Conflits potentiels
-            conflicts = self.conflict_detector.detect_conflicts(branch_name, target_branch)
-            
-            if conflicts["has_conflicts"]:
-                # En cas de conflits nombreux ou graves, préférer le merge
-                high_severity = sum(1 for c in conflicts.get("conflicting_files", []) 
-                                   if c.get("severity") == "Élevée")
-                
-                if high_severity > 0 or len(conflicts.get("conflicting_files", [])) > 3:
-                    return "merge"
-            
-            # Par défaut, utiliser rebase pour un historique plus propre
-            return "rebase"
-            
-        except Exception as e:
-            logger.error(f"Erreur lors de la détermination de la stratégie: {str(e)}")
-            # En cas d'erreur, revenir à la stratégie par défaut
-            return "merge" if self.default_strategy not in ["merge", "rebase"] else self.default_strategy
+
+        # Stratégie par défaut si aucune règle spécifique ne s'applique
+        return default_strategy
         
     def schedule_sync(self, frequency: str = "daily") -> Dict:
         """
