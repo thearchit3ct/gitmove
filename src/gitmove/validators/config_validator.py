@@ -228,11 +228,16 @@ class ConfigValidator:
         warnings = []
         normalized_config = {}
         
+        # Initialize normalized_config with default values
+        for section_name, section_schema in self._CONFIG_SCHEMA.items():
+            normalized_config[section_name] = {}
+            for key, rules in section_schema.items():
+                normalized_config[section_name][key] = rules.get('default')
+        
         def _validate_section(schema: Dict, section_config: Dict, section_name: str):
-            """Validate a specific configuration section."""
-            section_data = {}
             for key, rules in schema.items():
-                value = section_config.get(key, rules.get('default'))
+                # Get value, with None as fallback
+                value = section_config.get(key)
                 
                 # Check if required
                 if rules.get('required', False) and value is None:
@@ -241,16 +246,30 @@ class ConfigValidator:
                 
                 # Type checking
                 if value is not None:
-                    # Check main type
-                    if not isinstance(value, rules['type']):
-                        errors.append(f"Invalid type for {section_name}.{key}. "
-                                      f"Expected {rules['type'].__name__}, got {type(value).__name__}")
+                    expected_type = rules['type']
+                    if not isinstance(value, expected_type):
+                        try:
+                            # Attempt type conversion for basic types
+                            if expected_type == int and isinstance(value, (str, float)):
+                                value = int(float(value))
+                            elif expected_type == float and isinstance(value, (str, int)):
+                                value = float(value)
+                            elif expected_type == str and not isinstance(value, (dict, list)):
+                                value = str(value)
+                            elif expected_type == bool and isinstance(value, str):
+                                value = value.lower() in ('true', 'yes', '1', 'on')
+                            else:
+                                errors.append(f"Invalid type for {section_name}.{key}. "
+                                          f"Expected {rules['type'].__name__}, got {type(value).__name__}")
+                                continue
+                        except (ValueError, TypeError):
+                            errors.append(f"Cannot convert {section_name}.{key} to {rules['type'].__name__}")
+                            continue
                     
                     # Additional type-specific validations
-                    if rules['type'] == str and 'pattern' in rules:
+                    if rules['type'] == str and 'pattern' in rules and value:
                         if not re.match(rules['pattern'], str(value)):
-                            errors.append(f"Invalid format for {section_name}.{key}. "
-                                          f"Must match pattern: {rules['pattern']}")
+                            errors.append(f"Invalid format for {section_name}.{key}")
                     
                     if rules['type'] == int:
                         if 'min' in rules and value < rules['min']:
@@ -258,43 +277,50 @@ class ConfigValidator:
                         if 'max' in rules and value > rules['max']:
                             errors.append(f"{section_name}.{key} must be at most {rules['max']}")
                     
-                    if rules['type'] == list:
-                        if 'item_type' in rules:
-                            for idx, item in enumerate(value):
-                                if not isinstance(item, rules['item_type']):
-                                    errors.append(f"Invalid item type at position {idx} in {section_name}.{key}. "
-                                                 f"Expected {rules['item_type'].__name__}, got {type(item).__name__}")
+                    if rules['type'] == list and 'item_type' in rules:
+                        if not all(isinstance(item, rules['item_type']) for item in value):
+                            # Try to convert items if possible
+                            try:
+                                if rules['item_type'] == str:
+                                    value = [str(item) for item in value]
+                                elif rules['item_type'] == int:
+                                    value = [int(item) for item in value]
+                            except (ValueError, TypeError):
+                                errors.append(f"Invalid item type in {section_name}.{key}")
                     
                     # Allowed values
                     if 'allowed' in rules and value not in rules['allowed']:
                         errors.append(f"Invalid value for {section_name}.{key}. "
-                                      f"Allowed values: {', '.join(rules['allowed'])}")
+                                      f"Allowed values: {rules['allowed']}")
                 
                 # Store normalized value
-                section_data[key] = value if value is not None else rules.get('default')
-            
-            # Add validated section to normalized config
-            normalized_config[section_name] = section_data
-
+                normalized_config[section_name][key] = value if value is not None else rules.get('default')
+        
         # Validate each section
         for section, schema in self._CONFIG_SCHEMA.items():
             section_config = config.get(section, {})
             _validate_section(schema, section_config, section)
         
-        # Check for unknown sections or keys
-        for section, content in config.items():
+        # Check for unknown sections/keys
+        for section in config:
             if section not in self._CONFIG_SCHEMA:
                 warnings.append(f"Unknown configuration section: {section}")
-                continue
-                
-            if isinstance(content, dict):
-                for key in content:
-                    if key not in self._CONFIG_SCHEMA[section]:
+                # Copy unknown sections to normalized config
+                normalized_config[section] = config[section]
+            else:
+                # Check for unknown keys in known sections
+                for key in config.get(section, {}):
+                    if key not in self._CONFIG_SCHEMA.get(section, {}):
                         warnings.append(f"Unknown configuration key: {section}.{key}")
+                        # Copy unknown keys to normalized config
+                        normalized_config[section][key] = config[section][key]
         
         # Report results
-        if errors or warnings:
+        if errors:
             self._display_validation_results(errors, warnings)
+            raise ValueError("Invalid configuration detected")
+        elif warnings:
+            self._display_validation_results([], warnings)
         
         return normalized_config
     
@@ -322,8 +348,6 @@ class ConfigValidator:
             )
             self.console.print(warning_panel)
         
-        if errors:
-            raise ValueError("Invalid configuration detected")
     
     def _load_config(self) -> Dict:
         """

@@ -263,27 +263,30 @@ class BranchManager:
             "behind_commits": behind,
         }
     
-    def _get_branch_divergence(self, branch_name: str, base_branch: str) -> Tuple[int, int]:
+    def _get_branch_divergence(self, branch, target_branch):
         """
-        Calcule la divergence entre deux branches.
+        Obtenir le nombre de commits d'avance et de retard entre deux branches.
         
         Args:
-            branch_name: Nom de la branche à comparer
-            base_branch: Nom de la branche de base
-            
-        Returns:
-            Tuple (ahead, behind) indiquant le nombre de commits d'avance et de retard
-        """
-        if branch_name == base_branch:
-            return 0, 0
+            branch: Nom de la branche à comparer
+            target_branch: Nom de la branche cible (souvent main)
         
+        Returns:
+            Tuple (ahead, behind) avec le nombre de commits
+        """
         try:
-            # Récupérer la divergence avec la branche de base
-            merge_base = self.repo.git.merge_base(branch_name, base_branch)
-            ahead = len(list(self.repo.iter_commits(f"{merge_base}..{branch_name}")))
-            behind = len(list(self.repo.iter_commits(f"{merge_base}..{base_branch}")))
+            # Trouver l'ancêtre commun
+            common_ancestor = self.git.merge_base(branch, target_branch)
+            
+            # Compter les commits en avance
+            ahead_output = self.git.rev_list('--count', f'{target_branch}..{branch}')
+            ahead = int(ahead_output.strip())
+            
+            # Compter les commits en retard
+            behind_output = self.git.rev_list('--count', f'{branch}..{target_branch}')
+            behind = int(behind_output.strip())
             
             return ahead, behind
-        except GitCommandError as e:
-            logger.error(f"Erreur lors du calcul de la divergence: {str(e)}")
+        except Exception as e:
+            print(f"Erreur lors du calcul de la divergence: {e}")
             return 0, 0
